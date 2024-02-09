@@ -1,6 +1,7 @@
 To get the code running please adjust the following links in the code once you downloaded the pvsizingprob folder:
 1. System path: Please adjust the following code in PV_SIZINGPROB (Line 31):
      - here should be the path to the directory where the functions import_data, plotting_module and results_export should be!
+
 """
 path to the module 'import_data'
 sys.path.append(r'C:\Users\...\02_modeling_and_optimization\functions') 
