@@ -4,6 +4,7 @@ To get the code running please adjust the following links in the code once you d
 
 """
 path to the module 'import_data'
+
 sys.path.append(r'C:\Users\...\02_modeling_and_optimization\functions') 
 """
 
@@ -17,5 +18,6 @@ sys.path.append(r'C:\Users\...\02_modeling_and_optimization\functions')
       
     """
     Define the path to the results directory
+   
     results_directory = r'C:\Users\...\pvsizingprob\results'
     """
