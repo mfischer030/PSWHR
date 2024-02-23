@@ -146,8 +146,10 @@ def get_data():
     timeline_choice = input("Enter 'week' or 'year' for the timeline: ")
     if timeline_choice.lower() == 'week':
         weekly_timeline = WeeklyTimeline(
-            r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\inputData\input_data\Inputs_BoundaryLoads_week.xlsx',
-            r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\inputData\demand_data\demand_data_weekly.xlsx'
+            # r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\inputData\input_data\Inputs_BoundaryLoads_week.xlsx',
+            # r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\inputData\demand_data\demand_data_weekly.xlsx'
+            r'C:\Users\peter_c\Desktop\test\PSWHR\PSWHR\input_data\Inputs_BoundaryLoads_week.xlsx',
+            r'C:\Users\peter_c\Desktop\test\PSWHR\PSWHR\input_data\demand_data_weekly.xlsx'
         )
         
         # Save variables in the main script
@@ -164,8 +166,8 @@ def get_data():
             year_choice = input("Enter the year you want to consider (2019, 2020, 2021, 2022): ")
         
         yearly_timeline = YearlyTimeline(
-            r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\inputData\input_data\Rubigen_2019-2022_irradiance_Hourly.xlsx',
-            r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\inputData\demand_data\demand_data_yearly.xlsx',
+            r'C:\Users\peter_c\Desktop\test\PSWHR\PSWHR\input_data\Rubigen_2019-2022_irradiance_Hourly.xlsx',
+            r'C:\Users\peter_c\Desktop\test\PSWHR\PSWHR\input_data\demand_data_yearly.xlsx',
             year_choice  # Pass the chosen year to the YearlyTimeline class
         )
         

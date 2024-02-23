@@ -28,7 +28,7 @@ palette = sns.color_palette("husl", 8)  # You can choose a different palette if 
 # Import data
 #------------------------------------------------------------------------------
 # path to the module 'import_data' => change path if needed
-sys.path.append(r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\functions') 
+sys.path.append(r'C:\Users\peter_c\Desktop\test\PSWHR\PSWHR\functions')
 from import_data import get_data
 df_input, df_demand, irradiance, P_demand = get_data() # Import data and generate variables using the get_data function
 
@@ -56,7 +56,7 @@ weeks  = days / 7                                  # number of weeks
 deltat = 3600                                      # time step (s)
 
 # Efficiencies of components in [-]
-eta = {'PV': 0.21,'ELY': 0.6, 'C': 0.7526, 'TANK': 1, 'FC': 0.5}
+eta = {'PV': 0.21,'ELY': 0+1*0.6, 'C': 0+1*0.7526, 'TANK': 1, 'FC': 0+1*0.5}
 
 # Lifetime of the components in [years]
 life = {'PV': 25,'ELY': 20, 'C': 20, 'TANK': 35, 'FC': 20} #Gabriele: do you have references for these values? Can you please check the lifetime values for ely and FC
@@ -66,7 +66,7 @@ UP = {
     'PV': 0.8,          # Unit price PV in [€/W]
     'ELY': 1.1,         # Unit price electrolyser [€/W]
     'C': 0.05,          # CHECK FOR DATA
-    'TANK': 0.1644/HHV, # Unit price hydrogen storage [EUR/J], 1644 [EUR/kgH2]  
+    'TANK': 1*0.1644/HHV, # Unit price hydrogen storage [EUR/J], 1644 [EUR/kgH2]
     'FC': 1,            # CHECK FOR DATA 
     'HP': 0.0576,       # Unit price heat pump
 }
@@ -79,7 +79,7 @@ P_peak_max = np.max(P_demand)
 # Defining maximal SIZES of the components-------------------------------------
 # maximum PV size needs to be defined to define the upper bound of the design variable.
 # Area_PV_max  = P_peak_max / (eta['PV'] * np.mean(irradiance)) # Maximum PV area [m2] 
-Area_PV_max  = 10000 # Maximum PV area [m2]
+Area_PV_max  = 0.005*100000 # Maximum PV area [m2]
 
 # Electrolyser maximal nominal power (W) very large (not realistic)
 S_ELY_max = 500*1000                         # Maximal Electrolyzer size in [W]
@@ -92,7 +92,7 @@ p_in    = 50                                # Compressor inlet pressure [bar] #G
 L_is_C  = k/(k-1)*R_H2*T_in_H2*((p_out/p_in)**((k-1)/k)-1) # Specific work compressor [kJ/kg] 
 
 # Maximal TANK energy capacity (J) => 2 days storage capacity
-S_TANK_max = E_demand_day * 4 * deltat                  # E_demand_day in [Wh] #Gabriele: E_demand_day is in [Wh], correct? why do you multiply for deltat? 
+S_TANK_max = 10000*E_demand_day * 4 * deltat                  # E_demand_day in [Wh] #Gabriele: E_demand_day is in [Wh], correct? why do you multiply for deltat?
 S_TANK_H2_max = S_TANK_max / HHV                        # equivalent in kg_H2
 
 # Maximal FC size as the maximal power demand divided by eff in [W]
@@ -114,8 +114,8 @@ S_FC    = PV_sizingprob.addVar(lb=0, ub=S_FC_max,    name='S_FC')
 P_ELY   = PV_sizingprob.addVars(nHours, lb=0, ub=S_ELY_max,    name='P_ELY')
 E_TANK  = PV_sizingprob.addVars(nHours, lb=0, ub=S_TANK_max,   name='E_TANK')
 P_FC    = PV_sizingprob.addVars(nHours, lb=0, ub=S_FC_max,     name='P_FC')    
-P_imp   = PV_sizingprob.addVars(nHours, lb=0, ub=GRB.INFINITY, name="P_imp")   # Imported electricity from the Grid in [W]
-P_exp   = PV_sizingprob.addVars(nHours, lb=0, ub=max(P_ELY),   name="P_exp")   # Check upper-bound; #gabriele: replace max(P_ELY) with S_ELY. In general, avoid using max() when defining constraints or design variables.
+P_imp   = PV_sizingprob.addVars(nHours, lb=0, ub=1*1000*1000 + 0*GRB.INFINITY, name="P_imp")   # Imported electricity from the Grid in [W]
+P_exp   = PV_sizingprob.addVars(nHours, lb=0, ub=1*1000*1000 + 0*max(P_ELY),   name="P_exp")   # Check upper-bound; #gabriele: replace max(P_ELY) with S_ELY. In general, avoid using max() when defining constraints or design variables.
 #Gabriele: In Matlab, we set the ub to the max design value, e.g S_ELY_MAX (or max of demand, which you can extract from the time series), and then we define a constraint like:
 #Gabriele: PV_sizingprob.addConstrs((P_exp[t] <= S_ELY for t in range(nHours)), name="P_exp_upper_bound")
 #Gabriele: I think we already discussed this, but I forgot :) could you explain me again the rationale to limit the exported power to the ely size? I am in favour of limiting the exported power, I just don't remember why we set that as max value
@@ -155,6 +155,7 @@ for t in range(1, nHours): #Gabriele: as you know, vectors in python starts at i
     PV_sizingprob.addConstr((P_ELY[t]  <= S_ELY),  "upper_Size_Constraint_ELY")
     PV_sizingprob.addConstr((E_TANK[t] <= S_TANK), "upper_Size_Constraint_TANK")
     PV_sizingprob.addConstr((P_FC[t]   <= S_FC ),   "upper_Size_Constraint_FC")
+    #PV_sizingprob.addConstr((P_imp[t]   <= 10000.0 ),   "upper_Size_Constraint_Grid")
 
 # constraint for H2 storage equal at final and last time step (periodicity)
 PV_sizingprob.addConstr(E_TANK[0] == E_TANK[nHours-1]) 
@@ -174,15 +175,29 @@ for component in components:
     S_i = globals()["S_" + component]  # Access the variables dynamically
     cost_inst += (S_i * UP[component]) / life[component]   
 
+cost_inst = 0
 
 # Operation costs in [€/y]
-cost_op = sum((P_imp[t] * cost_imp_el[t] - P_exp[t] * cost_exp_el[t]) for t in range(nHours))
+cost_op = 0
+#cost_op = sum((P_imp[t] * cost_imp_el[t] - P_exp[t] * cost_exp_el[t]) for t in range(nHours))
+#cost_op = sum((P_imp[t] * cost_imp_el[t] - 0*P_exp[t] * cost_exp_el[t]) for t in range(nHours))
+#cost_op = cost_op + 12*max(P_imp)*16.0 # max() bad style by PC54!
+'''
+P_max_imp = 0
+for t in range(nHours):
+    # if P_imp[t] > P_max_imp:
+        # P_max_imp = P_imp[t]
+        PV_sizingprob.addConstr((P_max_imp <= P_imp[t]) >> (P_max_imp==P_imp[t]), "max_grid_power_constraint")
+
+cost_op = cost_op + 12*P_max_imp*16.0
+'''
+
 
 # Maintenance cost 
 # cost_maint = 
 
 # Total annual costs in [k€/y]
-cost = cost_inst + cost_op #+ cost_maint + cost_startup 
+cost = cost_inst + cost_op #+ cost_maint + cost_startup
 
 #------------------------------------------------------------------------------
 # Define the objective function: minimal costs
@@ -226,105 +241,109 @@ for name, val in zip(names, values):
     #print(f"{name} = {val}")
 
 print("Area_PV = {:.2f} square meters".format(Area_PV.X))
+print("Max grid power peak = {:.2f} kW".format(max(P_imp)))
 
-#------------------------------------------------------------------------------
-# Plot main results------------------------------------------------------------
-fig, (ax1, ax2, ax3) = plt.subplots(nrows=3, figsize=(20, 10))
+try:
+    #------------------------------------------------------------------------------
+    # Plot main results------------------------------------------------------------
+    fig, (ax1, ax2, ax3) = plt.subplots(nrows=3, figsize=(20, 10))
 
-# Plot 1: Size and operation of the ELY
-ax1.plot(range(len(df_input)), [P_ELY[t].X / 1000 for t in range(len(df_input))], label='ELY Electrolyzer (kW)', color=palette[1])
-ax1.plot(range(len(df_input)), [S_ELY.X / 1000] * len(df_input), label='ELY size (kW)', linestyle='--', col-or=palette[3])
-ax1.set_xlabel('Time [h]')
-ax1.set_ylabel('Power [kW]')
-ax1.set_ylim([0, S_ELY.X * 1.1 / 1000])
-ax1.legend(loc='upper right')
+    # Plot 1: Size and operation of the ELY
+    ax1.plot(range(len(df_input)), [P_ELY[t].X / 1000 for t in range(len(df_input))], label='ELY Electrolyzer (kW)', color=palette[1])
+    ax1.plot(range(len(df_input)), [S_ELY.X / 1000] * len(df_input), label='ELY size (kW)', linestyle='--', color=palette[3])
+    ax1.set_xlabel('Time [h]')
+    ax1.set_ylabel('Power [kW]')
+    ax1.set_ylim([0, S_ELY.X * 1.1 / 1000])
+    ax1.legend(loc='upper right')
 
-# Plot 1: Size and operation of the FC
-ax2.plot(range(len(df_input)), [P_FC[t].X / 1000 for t in range(len(df_input))], label='Fuel Cell (kW)', col-or=palette[0])
-ax2.plot(range(len(df_input)), [S_FC.X / 1000] * len(df_input), label='FC size (kW)', linestyle=':', col-or=palette[2])
-ax2.set_xlabel('Time [h]')
-ax2.set_ylabel('Power [kW]')
-ax2.set_ylim([0, S_FC.X * 1.1 / 1000])
-ax2.legend(loc='upper right')
+    # Plot 1: Size and operation of the FC
+    ax2.plot(range(len(df_input)), [P_FC[t].X / 1000 for t in range(len(df_input))], label='Fuel Cell (kW)', color=palette[0])
+    ax2.plot(range(len(df_input)), [S_FC.X / 1000] * len(df_input), label='FC size (kW)', linestyle=':', color=palette[2])
+    ax2.set_xlabel('Time [h]')
+    ax2.set_ylabel('Power [kW]')
+    ax2.set_ylim([0, S_FC.X * 1.1 / 1000])
+    ax2.legend(loc='upper right')
 
-# Plot 3: Energy and TANK Size
-ax3.plot(range(len(df_input)), [E_TANK[t].X / 3600 / 1000 for t in range(len(df_input))], label='TANK (kWh)', color=palette[5])
-ax3.plot(range(len(df_input)), [S_TANK.X / 1000 / 3600] * len(df_input), label='TANK size (kWh)', linestyle='-.', color=palette[6])
-ax3.set_xlabel('Time [h]')
-ax3.set_ylabel('Energy [kWh]')
-ax3.set_ylim([0, S_TANK.X * 1.1 / 1000 / 3600])
-ax3.legend(loc='upper right')
+    # Plot 3: Energy and TANK Size
+    ax3.plot(range(len(df_input)), [E_TANK[t].X / 3600 / 1000 for t in range(len(df_input))], label='TANK (kWh)', color=palette[5])
+    ax3.plot(range(len(df_input)), [S_TANK.X / 1000 / 3600] * len(df_input), label='TANK size (kWh)', linestyle='-.', color=palette[6])
+    ax3.set_xlabel('Time [h]')
+    ax3.set_ylabel('Energy [kWh]')
+    ax3.set_ylim([0, S_TANK.X * 1.1 / 1000 / 3600])
+    ax3.legend(loc='upper right')
 
-plt.tight_layout()
-plt.show()
+    plt.tight_layout()
+    plt.show()
 
-# Sizes of the components------------------------------------------------------
-# Assuming 'S_ELY', 'S_TANK', 'S_FC' are Gurobi variables
-S_ELY_value = S_ELY.X
-S_TANK_value = S_TANK.X
-S_FC_value = S_FC.X
+    # Sizes of the components------------------------------------------------------
+    # Assuming 'S_ELY', 'S_TANK', 'S_FC' are Gurobi variables
+    S_ELY_value = S_ELY.X
+    S_TANK_value = S_TANK.X
+    S_FC_value = S_FC.X
 
-# Create a bar plot
-components = ['S_ELY', 'S_TANK', 'S_FC']
-component_sizes = [S_ELY_value, S_TANK_value, S_FC_value]
+    # Create a bar plot
+    components = ['S_ELY', 'S_TANK', 'S_FC']
+    component_sizes = [S_ELY_value, S_TANK_value, S_FC_value]
 
-# Bar plot
-plt.figure(figsize=(6, 4))
-plt.bar(components, component_sizes, color=['blue', 'green', 'orange', 'red'])
-plt.title('Sizes of Components')
-plt.xlabel('Components')
-plt.ylabel('Size')
-plt.show()
+    # Bar plot
+    plt.figure(figsize=(6, 4))
+    plt.bar(components, component_sizes, color=['blue', 'green', 'orange', 'red'])
+    plt.title('Sizes of Components')
+    plt.xlabel('Components')
+    plt.ylabel('Size')
+    plt.show()
 
-import matplotlib.pyplot as plt
+    import matplotlib.pyplot as plt
 
-# Plot visualizing the electricity generated, imported, and exported-----------
-# Retrieve the values of P_PV, P_imp, and P_exp => stacked plot here
-P_PV_values = [P_PV[t].getValue()/1000 for t in range(nHours)]
-P_imp_values = [P_imp[t].X/1000 for t in range(nHours)]
-P_exp_values = [P_exp[t].X/1000 for t in range(nHours)]
+    # Plot visualizing the electricity generated, imported, and exported-----------
+    # Retrieve the values of P_PV, P_imp, and P_exp => stacked plot here
+    P_PV_values = [P_PV[t].getValue()/1000 for t in range(nHours)]
+    P_imp_values = [P_imp[t].X/1000 for t in range(nHours)]
+    P_exp_values = [P_exp[t].X/1000 for t in range(nHours)]
 
-# Create subplots
-fig, axs = plt.subplots(2, 1, figsize=(20, 10), sharex=True)
+    # Create subplots
+    fig, axs = plt.subplots(2, 1, figsize=(20, 10), sharex=True)
 
-# Plot P_PV and P_imp in the first subplot
-axs[0].plot(range(len(df_input)), P_PV_values, label='PV Generation (W)', color='orange')
-axs[0].plot(range(len(df_input)), P_imp_values, label='Imported Power (W)', color='blue')
-axs[0].set_ylabel('Power [kW]')
-axs[0].legend(loc='upper left')
-axs[0].set_title('PV Generation and Imported Power')
+    # Plot P_PV and P_imp in the first subplot
+    axs[0].plot(range(len(df_input)), P_PV_values, label='PV Generation (W)', color='orange')
+    axs[0].plot(range(len(df_input)), P_imp_values, label='Imported Power (W)', color='blue')
+    axs[0].set_ylabel('Power [kW]')
+    axs[0].legend(loc='upper left')
+    axs[0].set_title('PV Generation and Imported Power')
 
-# Plot P_exp in the second subplot
-axs[1].plot(range(len(df_input)), P_exp_values, label='Exported Power (W)', color=palette[5])
-axs[1].set_xlabel('Time [h]')
-axs[1].set_ylabel('Power [kW]')
-axs[1].legend(loc='upper left')
-axs[1].set_title('Exported Power')
+    # Plot P_exp in the second subplot
+    axs[1].plot(range(len(df_input)), P_exp_values, label='Exported Power (W)', color=palette[5])
+    axs[1].set_xlabel('Time [h]')
+    axs[1].set_ylabel('Power [kW]')
+    axs[1].legend(loc='upper left')
+    axs[1].set_title('Exported Power')
 
-plt.show()
+    plt.show()
 
 
-# Plot costs and electricity prices--------------------------------------------
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(6, 10))
-# Plot 1: Import and Export Prices
-ax1.plot(range(len(df_input)), df_input['price_Eur_MWh'], label='Import Price (EUR/MWh)', color=palette[3])
-ax1.plot(range(len(df_input)), df_input['Price_DayAhed'], label='Export Price (EUR/MWh)', color=palette[4])
-ax1.set_xlabel('Time [h]')
-ax1.set_ylabel('Price [EUR/Wh]')
-ax1.legend()
+    # Plot costs and electricity prices--------------------------------------------
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(6, 10))
+    # Plot 1: Import and Export Prices
+    ax1.plot(range(len(df_input)), df_input['price_Eur_MWh'], label='Import Price (EUR/MWh)', color=palette[3])
+    ax1.plot(range(len(df_input)), df_input['Price_DayAhed'], label='Export Price (EUR/MWh)', color=palette[4])
+    ax1.set_xlabel('Time [h]')
+    ax1.set_ylabel('Price [EUR/Wh]')
+    ax1.legend()
 
-# Plot 2: Costs Overview (Bar Plot)
-bar_width = 0.4
+    # Plot 2: Costs Overview (Bar Plot)
+    bar_width = 0.4
 
-bar1 = ax2.bar(0, cost_inst.getValue()/1000, bar_width, label='Installation Cost (k€/y)', color=palette[0])
-bar2 = ax2.bar(1, cost_op.getValue()/1000, bar_width, label='Operation Cost (k€/y)', color=palette[1])
-bar3 = ax2.bar(2, cost.getValue()/1000, bar_width, label='Total Cost (k€/y)', color=palette[2])
+    bar1 = ax2.bar(0, cost_inst.getValue()/1000, bar_width, label='Installation Cost (k€/y)', color=palette[0])
+    bar2 = ax2.bar(1, cost_op.getValue()/1000, bar_width, label='Operation Cost (k€/y)', color=palette[1])
+    bar3 = ax2.bar(2, cost.getValue()/1000, bar_width, label='Total Cost (k€/y)', color=palette[2])
 
-ax2.set_ylabel('Cost [k€/y]')
-ax2.legend()
-ax2.set_xticks([0, 1, 2])
-ax2.set_xticklabels(['Installation Cost', 'Operation Cost', 'Total Cost'])
-plt.show()
+    ax2.set_ylabel('Cost [k€/y]')
+    ax2.legend()
+    ax2.set_xticks([0, 1, 2])
+    ax2.set_xticklabels(['Installation Cost', 'Operation Cost', 'Total Cost'])
+    plt.show()
+except:
+    print("An error occured during plotting results")
 #------------------------------------------------------------------------------
 # Export results to excel -----------------------------------------------------
 
@@ -355,7 +374,7 @@ for t in range(nHours):
 variable_values['status'] = PV_sizingprob.status
 
 # Define the path to the results directory
-results_directory = r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\results'
+results_directory = r'C:\Users\peter_c\Desktop\test\results'
 
 # Export results
 export_optimization_results(variable_names, variable_values, results_directory)
