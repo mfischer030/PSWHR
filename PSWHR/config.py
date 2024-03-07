@@ -28,11 +28,11 @@ def paths_configuration(user):
         export_path = r'C:\Users\peter_c\Desktop\test\results'
     
     # elif user == 'gabriele':
-    #     system_path = 
-    #     input_path  = 
-    #     demand_path = 
-    #     function_path = 
-    #     export_path = 
+        input_path  = r'C:\Users\...\PSWHR\PSWHR\input_data\Rubigen_2019-2022_irradiance_Hourly.xlsx',
+        demand_path = r'C:\Users\...\PSWHR\PSWHR\input_data\200923_Lastang 2015-2020_Rubigen.xlsx'
+        heat_path   = r'C:\Users\...\PSWHR\PSWHR\input_data\Heat_Inputs_year_2022.xlsx'
+        function_path = r'C:\Users\...\PSWHR\PSWHR\functions'
+        export_path = r'C:\Users\...\results'
     
     
     return input_path, demand_path, heat_path, function_path, export_path
