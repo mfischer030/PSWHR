@@ -67,7 +67,7 @@ cost_imp_el = df_input['price_Eur_MWh'].values # hourly cost to import Maxime: v
 cost_exp_el = df_input['Price_DayAhed'].values # hourly cost to export 
 
 # Revenues from WHR in [€/kWh]
-cost_export_heatLT = 0.2 #0.09 
+cost_export_heatMT = 0.2 #0.09 
 cost_export_heatHT = 0.2 #0.1189
 
 # Time parameters
@@ -147,7 +147,7 @@ P_peak_max = np.max(P_demand)
 #------------------------------------------------------------------------------
 
 # Area_PV_max  = P_peak_max / (eta['PV'] * np.mean(irradiance)) # Maximum PV area [m2]
-Area_PV_max  = 3000 # Maximum PV area [m2] => how to set, quantify the maximum pv area?
+Area_PV_max  = 2000 # Maximum PV area [m2] => how to set, quantify the maximum pv area?
 
 # Electrolyser max and min nominal power (W)   
 S_ELY_max = 1000*1000   # Maximal Electrolyzer size in [W]
@@ -171,22 +171,31 @@ S_FC_max = 1000*1000
 Range PEMFC = [10W;1MW] from 2021_cigolotti Comprehensive Review on Fuel Cell 
 Technology for Stationary Applications
 """
-# Heat Recovery ---------------------------------------------------------------
+# Waste Heat Recovery ---------------------------------------------------------
 
 T_in  = 57    # Inlet temperature cooling water to HEX in [°C]
 T_out = 62    # Temperature cooling water to applications [°C]
 T_HEX = 64    # Outlet temperature cooling water from HEX [°C]
 c_p   = 4186  # Specific heat capacity cooling water [J/kg/K]
 
-P_th_max = (1 - eta['ELY']) * S_ELY_max      # Maximum heat recovered in [W]
-m_cw_max = P_th_max / (c_p * (T_out - T_in)) # Cooling water maximum mass flow in [kg/s]
+P_th_ELY_max = (1 - eta['ELY']) * S_ELY_max # max heat recovered from ELY in [W]
+P_th_FC_max  = (1 - eta['FC'])  * S_FC_max  # max heat recovered from FC in [W]
+P_th_max = P_th_ELY_max + P_th_FC_max
 
-T_LT_in   = 26        # LT DHN water inlet temperature HEX [°C] from NEST
-T_LT_out  = 36        # LT DHN water outlet temperature HEX [°C] from NEST
+m_cw_FC_max  = P_th_FC_max / (c_p * (T_out - T_in))                   # Cooling water maximum mass flow in [kg/s]
+m_cw_ELY_max = P_th_ELY_max / (c_p * (T_out - T_in))                  # Cooling water maximum mass flow in [kg/s]
+m_cw_max     = P_th_max / (c_p * (T_out - T_in))  # Cooling water maximum mass flow in [kg/s]
+
+T_MT_in   = 26        # MT DHN water inlet temperature HEX [°C] from NEST
+T_MT_out  = 36        # MT DHN water outlet temperature HEX [°C] from NEST
 T_HT_out  = 66        # HT DHN water outlet temperature HP [°C] from NEST (domestic hot water)
-T_log     = ((T_out - T_LT_out) - (T_in - T_LT_in)) / np.log((T_out - T_LT_out) / (T_in - T_LT_in)) # Logarithmic mean temp difference in HEX
-U_HEX     = 2                             # Overall heat transfer coeff HEX [kW/m2/K], swedish thesis
-S_HEX_max = P_th_max / (U_HEX * T_log)    # Maximum heat exchanger surface [m2]
+T_log     = ((T_out - T_MT_out) - (T_in - T_MT_in)) / np.log((T_out - T_MT_out) / (T_in - T_MT_in)) # Logarithmic mean temp difference in HEX
+U_HEX     = 2         # Overall heat transfer coeff HEX [kW/m2/K], swedish thesis
+
+S_HEX_ELY_max = P_th_ELY_max / (U_HEX * T_log)  # Maximum heat exchanger surface [m2]
+S_HEX_FC_max  = P_th_FC_max / (U_HEX * T_log)   # Maximum heat exchanger surface [m2]
+S_HEX_max = S_HEX_ELY_max + S_HEX_FC_max
+
 COP_carnot= T_HT_out / (T_HT_out - T_out) # Maximum coefficient of performance HP
 COP       = 0.5 * COP_carnot              # Real COP, as in Tiktak
 #------------------------------------------------------------------------------
@@ -203,9 +212,6 @@ else:
     print("Invalid scenario choice. Please enter 'grid' or 'off-grid'.")
     sys.exit(1)  # Exit the program in case of an invalid choice
     
-# Case Study: 16 x 150 kW = 2400 kW Supercharger => The transmission station 
-# should have ths size, so it can be a upper bound for P_exp
-# OR: maximal power demand in 1h is 613.5 kW => can also be the upper bound
 #------------------------------------------------------------------------------
 # Define the optimization problem
 m = Model()
@@ -228,14 +234,17 @@ P_exp     = m.addVars(nHours, lb=0, ub=P_exp_ub,   name="P_exp")               #
 
 
 # Waste Heat recovery varibles
-m_cw    = m.addVars(nHours, lb=0, ub=m_cw_max, name="m_cw")                    # Cooling water mass flow
-m_cw_HT = m.addVars(nHours, lb=0, ub=m_cw_max, name="m_cw_HT")                 # Hight Temp water mass flow
-m_cw_LT = m.addVars(nHours, lb=0, ub=m_cw_max, name="m_cw_LT")                 # Low Temp. water mass flow
-P_th_HT = m.addVars(nHours, lb=0, ub=P_th_max, name="P_th_HT")  
-P_th_LT = m.addVars(nHours, lb=0, ub=P_th_max, name="P_th_LT")
-S_HP    = m.addVar(lb=0, ub=P_th_max, name="S_HP")
-S_HEX   = m.addVar(lb=0, ub=S_HEX_max, name="S_HEX")
-# S_HEX = m.addVar(lb=0, ub=P_th_max, name="S_HEX")  # Uncomment if S_HEX is needed
+m_cw_ELY = m.addVars(nHours, lb=0, ub=m_cw_ELY_max, name="m_cw")               # Cooling water ELY mass flow
+m_cw_FC  = m.addVars(nHours, lb=0, ub=m_cw_FC_max, name="m_cw")   
+  
+               
+m_cw_HT  = m.addVars(nHours, lb=0, ub=m_cw_max, name="m_cw_HT")                # Hight Temp water mass flow ELY + FC
+m_cw_MT  = m.addVars(nHours, lb=0, ub=m_cw_max, name="m_cw_LT")                # Medium Temp. water mass flow ELY + FC
+P_th_HT  = m.addVars(nHours, lb=0, ub=P_th_max, name="P_th_HT")  
+P_th_MT  = m.addVars(nHours, lb=0, ub=P_th_max, name="P_th_LT")
+S_HP     = m.addVar(lb=0, ub=P_th_max, name="S_HP")
+S_HEX    = m.addVar(lb=0, ub=S_HEX_max, name="S_HEX")
+# S_HEX  = m.addVar(lb=0, ub=P_th_max, name="S_HEX")  # Uncomment if S_HEX is needed
 
 
 #------------------------------------------------------------------------------
@@ -279,7 +288,7 @@ for t in range(nHours):
     m.addConstr((P_FC[t]   <= S_FC ),  name= "upper_Size_Constraint_FC")
     
 
-m.addConstr(gp.quicksum(P_imp) <= 1 * gp.quicksum(P_demand), name= "GridUse")
+m.addConstr(gp.quicksum(P_imp) <= 0.35 * gp.quicksum(P_demand), name= "GridUse")
 
 # Initializing FC power
 m.addConstr(P_FC[0]   <= E_TANK[0] / deltat, name= "InitialFC")                                    
@@ -302,20 +311,21 @@ for month in months:
 # Waste Heat Recovery Constraints----------------------------------------------
 
 for t in range(nHours):
-    # PEM outlet flow
-    m.addConstr(m_cw[t] == ((1 - eta['ELY']) * P_ELY[t]) / (c_p * (T_HEX - T_in)), "PEM_outlet")
+    # PEM & FC outlet flow assuming T_HEX and T_in are equivalent for ELY & FC
+    m.addConstr(m_cw_ELY[t] == ((1 - eta['ELY']) * P_ELY[t]) / (c_p * (T_HEX - T_in)), "PEM_outlet")
+    m.addConstr(m_cw_FC[t] == ((1 - eta['FC']) * P_FC[t]) / (c_p * (T_HEX - T_in)), "FC_outlet")
     
     # Cooling flow requirements
-    m.addConstr(m_cw[t] >= m_cw_HT[t] + m_cw_LT[t], "massBalanceCoolingWater")
+    m.addConstr(m_cw_ELY[t] + m_cw_FC[t] >= m_cw_HT[t] + m_cw_MT[t], "massflowBalanceCoolingWater")
     
     # Low-temperature heat output
-    m.addConstr(P_th_LT[t] == m_cw_LT[t] * c_p * (T_out - T_in), "LTheat")
+    m.addConstr(P_th_MT[t] == m_cw_MT[t] * c_p * (T_out - T_in), "LTheat")
     
     # High-temperature heat output
     m.addConstr(P_th_HT[t] == m_cw_HT[t] * c_p * (T_out - T_in), "HTheat")
     
-    # Heat exchanger size constraint for low-temperature side
-    m.addConstr(P_th_LT[t] / (U_HEX * T_log) <= S_HEX, "HEXsize")
+    # Heat exchanger size constraint for medium-temperature side
+    m.addConstr(P_th_MT[t] / (U_HEX * T_log) <= S_HEX, "HEXsize")
     
     # Heat pump size constraint for high-temperature side
     m.addConstr(P_th_HT[t] <= S_HP, "HPsize")
@@ -337,8 +347,8 @@ from cost import totalAnnualCost
 cost_maint, cost_WHR] = totalAnnualCost(
                         system_sizes, energy_tariff,
                         UP, maintenance, life, 
-                        P_imp, P_max_imp, P_exp, P_th_LT, P_th_HT,
-                        cost_imp_el, cost_exp_el, cost_export_heatLT, cost_export_heatHT,
+                        P_imp, P_max_imp, P_exp, P_th_MT, P_th_HT,
+                        cost_imp_el, cost_exp_el, cost_export_heatMT, cost_export_heatHT,
                         df_input, nHours, timeline_choice
                         )
 
@@ -379,11 +389,12 @@ P_imp  = [P_imp[t].X  for t in range(nHours)]
 P_exp  = [P_exp[t].X  for t in range(nHours)]
 P_max_imp = [P_max_imp[month].X for month in months]
 
-m_cw     = [m_cw[t].X     for t in range(nHours)]
-m_cw_HT  = [m_cw_HT[t].X  for t in range(nHours)]
-m_cw_LT  = [m_cw_LT[t].X  for t in range(nHours)]
-P_th_HT  = [P_th_HT[t].X  for t in range(nHours)]
-P_th_LT  = [P_th_LT[t].X  for t in range(nHours)]
+m_cw_ELY = [m_cw_ELY[t].X  for t in range(nHours)]
+m_cw_FC  = [m_cw_FC[t].X   for t in range(nHours)]
+m_cw_HT  = [m_cw_HT[t].X   for t in range(nHours)]
+m_cw_MT  = [m_cw_MT[t].X   for t in range(nHours)]
+P_th_HT  = [P_th_HT[t].X   for t in range(nHours)]
+P_th_MT  = [P_th_MT[t].X   for t in range(nHours)]
 
 # For lists with Gurobi LinExpr 
 P_PV    = [P_PV[t].getValue()    for t in range(nHours)]

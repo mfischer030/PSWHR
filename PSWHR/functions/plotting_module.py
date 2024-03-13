@@ -4,7 +4,8 @@ Created on Mon Feb  5 15:25:19 2024
 
 @author: fism
 """
-
+import plotly.express as px
+import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -55,34 +56,65 @@ def heat_demand_plot(heat_35degC_demand,heat_65degC_demand):
 #     ax.set_xlabel('Time [h]')  # Set the x-label here
 
 #     plt.show()
-    
+
 def plot_power_generation(P_PV, P_imp, P_exp, df_input):
-    # Plot power generation, imported, and exported power
-    fig, ax = plt.subplots(1, 1, figsize=(20, 6))  # Use a single axis with a larger figsize for readability
+    # Assuming df_input has an index that can serve as the x-axis (time)
+    x_values = df_input.index  # or range(len(df_input)) if there's no specific index
     
-    # Plot and fill PV Generation
-    ax.fill_between(range(len(df_input)), [P_PV[t] / 1000 for t in range(len(df_input))], color='orange', alpha=0.3)
-    ax.plot(range(len(df_input)), [P_PV[t] / 1000 for t in range(len(df_input))], label='PV Generation', color='orange')
+    # Create a DataFrame for Plotly Express
+    df_plot = pd.DataFrame({
+        'Time': x_values,
+        'PV Generation [kW]': [p / 1000 for p in P_PV],
+        'Imported Power [kW]': [p / 1000 for p in P_imp],
+        'Exported Power [kW]': [-p / 1000 for p in P_exp]
+    })
+
+    # Melt the DataFrame to long format for easier plotting with Plotly Express
+    df_long = pd.melt(df_plot, id_vars=['Time'], value_vars=['PV Generation [kW]', 'Imported Power [kW]', 'Exported Power [kW]'],
+                      var_name='Type', value_name='Power')
+
+    # Create the plot
+    fig = px.line(df_long, x='Time', y='Power', color='Type',
+                  labels={'Power': 'Power [kW]', 'Time': 'Time [h]'},
+                  color_discrete_map={
+                      'PV Generation [kW]': 'orange',
+                      'Imported Power [kW]': 'magenta',
+                      'Exported Power [kW]': 'green'
+                  })
+
+    # Update layout for aesthetics
+    fig.update_layout(title='PV Generation, Imported, and Exported Power Overview',
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
     
-    # Plot and fill Imported Power
-    ax.fill_between(range(len(df_input)), [P_imp[t] / 1000 for t in range(len(df_input))], color='magenta', alpha=0.3)
-    ax.plot(range(len(df_input)), [P_imp[t] / 1000 for t in range(len(df_input))], label='Imported Power', color='magenta')
+    fig.write_html('first_figure.html', auto_open=True)
     
-    # Plot and fill Exported Power as negative values
-    ax.fill_between(range(len(df_input)), [-P_exp[t] / 1000 for t in range(len(df_input))], color='green', alpha=0.3)
-    ax.plot(range(len(df_input)), [-P_exp[t] / 1000 for t in range(len(df_input))], label='Exported Power', color='green')
+# def plot_power_generation(P_PV, P_imp, P_exp, df_input):
+#     # Plot power generation, imported, and exported power
+#     fig, ax = plt.subplots(1, 1, figsize=(20, 6))  # Use a single axis with a larger figsize for readability
     
-    ax.set_ylabel('Power [kW]')  # Increase the font size for the y-axis label
-    ax.set_xlabel('Time [h]')  # Increase the font size for the x-axis label
-    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.17),
-          fancybox=False, shadow=False, ncol=5)
-    #ax.legend(loc='upper right')  # Increase the font size for the legend
-    #ax.set_title('PV Generation, Imported, and Exported Power')  
+#     # Plot and fill PV Generation
+#     ax.fill_between(range(len(df_input)), [P_PV[t] / 1000 for t in range(len(df_input))], color='orange', alpha=0.3)
+#     ax.plot(range(len(df_input)), [P_PV[t] / 1000 for t in range(len(df_input))], label='PV Generation', color='orange')
     
-    # Increase the font size for the tick labels
-    ax.tick_params(axis='both', which='major')
+#     # Plot and fill Imported Power
+#     ax.fill_between(range(len(df_input)), [P_imp[t] / 1000 for t in range(len(df_input))], color='magenta', alpha=0.3)
+#     ax.plot(range(len(df_input)), [P_imp[t] / 1000 for t in range(len(df_input))], label='Imported Power', color='magenta')
     
-    plt.show()
+#     # Plot and fill Exported Power as negative values
+#     ax.fill_between(range(len(df_input)), [-P_exp[t] / 1000 for t in range(len(df_input))], color='green', alpha=0.3)
+#     ax.plot(range(len(df_input)), [-P_exp[t] / 1000 for t in range(len(df_input))], label='Exported Power', color='green')
+    
+#     ax.set_ylabel('Power [kW]')  # Increase the font size for the y-axis label
+#     ax.set_xlabel('Time [h]')  # Increase the font size for the x-axis label
+#     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.17),
+#           fancybox=False, shadow=False, ncol=5)
+#     #ax.legend(loc='upper right')  # Increase the font size for the legend
+#     #ax.set_title('PV Generation, Imported, and Exported Power')  
+    
+#     # Increase the font size for the tick labels
+#     ax.tick_params(axis='both', which='major')
+    
+#     plt.show()
 
 
 # def plot_component_sizes(S_PV, S_PV_max, S_ELY, S_FC, S_TANK, S_ELY_max, S_FC_max, S_TANK_max):
@@ -197,7 +229,7 @@ def plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TAN
     # ax1.set_xlabel('Time [h]')
     ax1.set_ylabel('Power [kW]')
     # ax1.set_ylim([0, S_ELY_max * 1.1 / 1000])
-    ax1.set_ylim([0, 600])
+    ax1.set_ylim([0, S_ELY / 1000 * 1.1])
     ax1.legend(loc='upper right')
 
     # Plot 2: Size and operation of the FC
@@ -206,7 +238,7 @@ def plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TAN
     # ax2.set_xlabel('Time [h]')
     ax2.set_ylabel('Power [kW]')
     # ax2.set_ylim([0, S_FC_max * 1.1 / 1000])
-    ax2.set_ylim([0, 500])
+    ax2.set_ylim([0, S_FC / 1000 * 1.1])
     ax2.legend(loc='upper right')
 
     # Plot 3: Energy and TANK Size
@@ -215,7 +247,7 @@ def plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TAN
     ax3.set_xlabel('Time [h]')
     ax3.set_ylabel('Energy [kWh]')
     # ax3.set_ylim([0, (S_TANK_max * 1.1) / 3600000])
-    ax3.set_ylim([0, 5000])
+    ax3.set_ylim([0, S_TANK / 3600000 * 1.1])
     ax3.legend(loc='upper right')
 
     plt.tight_layout()

@@ -43,8 +43,6 @@ def totalAnnualCost(system_sizes, energy_tariff,
     # Operation costs in [€/y]-------------------------------------------------
     def electricity_prices(energy_tariff, P_imp, P_max_imp, P_exp, df_input, timeline_choice, vat_included=False):
         
-     
-        
         # Calculate the mean operating time (mittlere Benutzungsdauer)
         if timeline_choice == 'week':
             multiplier = 52                               # Assuming 52 weeks in a year
@@ -53,15 +51,15 @@ def totalAnnualCost(system_sizes, energy_tariff,
         else:
             multiplier = 1                                # Default to yearly calculation with no multiplication needed
         
-        # Calculate the mean of the monthly maximum values
-        mean_monthly_max = 0 
-        for month in P_max_imp: 
-            mean_monthly_max += P_max_imp[month] / len(P_max_imp)
+        # # Calculate the mean of the monthly maximum values
+        # mean_monthly_max = 0 
+        # for month in P_max_imp: 
+        #     mean_monthly_max += P_max_imp[month] / len(P_max_imp)
         
-        print(mean_monthly_max)
-        avr_operating_time = P_imp.sum() / mean_monthly_max
+        # print(mean_monthly_max)
+        # avr_operating_time = P_imp.sum() / mean_monthly_max
         
-        #avr_operating_time = 3600
+        avr_operating_time = 3600
         
         # print(f"The monthly maximum values is: {sum(P_imp)}")
         # print(f"The mean of the monthly maximum values is: {mean_monthly_max}")
@@ -90,17 +88,11 @@ def totalAnnualCost(system_sizes, energy_tariff,
                 "Hochtarif":   {"excl_vat": 7.47, "incl_vat": 8.08},
                 "Niedertarif": {"excl_vat": 3.74, "incl_vat": 4.04},
                 }
-        
-        # additionnal_grid_fees = {
-        #     "SystemServices_Swissgrid" : {"excl_MWSt": 0.75, "incl_vat": 0.81},
-        #     "Stromreserve"             : {"excl_MWSt": 1.20, "incl_vat": 1.30},
-        #     "Gesetzliche_Foerderabgabe": {"excl_MWSt": 2.30, "incl_vat": 2.49},
-        #     "Abgabe_an_die_Gemeinde"   : {"excl_MWSt": 1.50, "incl_vat": 1.62},
-        #     }
-        additionnal_grid_fees = {
-            "excl_vat": 0.75 + 1.20 + 2.30 + 1.50, 
-            "incl_vat" : 0.81 + 1.30 + 2.49 + 1.62
-            }
+    
+        # SystemServices_Swissgrid + Stromreserve + Gesetzliche_Foerderabgabe + Abgabe_an_die_Gemeinde
+        additionnal_grid_fees = {"excl_vat": 0.75 + 1.20 + 2.30 + 1.50, 
+                                "incl_vat" : 0.81 + 1.30 + 2.49 + 1.62
+                                }
 
         if energy_tariff not in tariffs:
             raise ValueError("Invalid tariff. Choose Green, Blue, or Grey.")
