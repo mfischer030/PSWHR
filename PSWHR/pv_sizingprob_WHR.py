@@ -299,7 +299,7 @@ m.addConstr(E_TANK[0] == E_TANK[nHours-1], name='Periodicity') # 08.02: added na
 
 # Overall energy balance: left => consumers | right => generators
 # m.addConstrs((P_ELY[t] + P_C[t] + P_exp[t] + P_demand[t] <= P_PV[t] + P_imp[t] + P_FC[t]  for t in range(nHours)), name='EnergyBalance') 
-m.addConstrs((P_ELY[t] + (P_th_HT[t]/COP) + P_C[t] + P_exp[t] + P_demand[t] <= P_PV[t] + P_imp[t] + P_FC[t]  for t in range(nHours)), name='EnergyBalance') 
+m.addConstrs((P_ELY[t] + (P_th_HT[t] + P_th_MT[t])/COP + P_C[t] + P_exp[t] + P_demand[t] <= P_PV[t] + P_imp[t] + P_FC[t]  for t in range(nHours)), name='EnergyBalance') 
 
 # Iterate over each month and add constraints based on P_imp[t] for timesteps in that month
 for month in months:
@@ -318,10 +318,8 @@ for t in range(nHours):
     # Cooling flow requirements
     m.addConstr(m_cw_ELY[t] + m_cw_FC[t] >= m_cw_HT[t] + m_cw_MT[t], "massflowBalanceCoolingWater")
     
-    # Low-temperature heat output
+    # Low- and High-temperature heat output
     m.addConstr(P_th_MT[t] == m_cw_MT[t] * c_p * (T_out - T_in), "LTheat")
-    
-    # High-temperature heat output
     m.addConstr(P_th_HT[t] == m_cw_HT[t] * c_p * (T_out - T_in), "HTheat")
     
     # Heat exchanger size constraint for medium-temperature side
