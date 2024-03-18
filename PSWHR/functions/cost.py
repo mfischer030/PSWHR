@@ -99,8 +99,24 @@ def totalAnnualCost(system_sizes, energy_tariff,
 
         energy_tariff_choice = tariffs[energy_tariff]
         
-        # Given prices for exported energy
+        # Given prices for exported energy in Rp/kWh
         price_export_energy = [13.07, 7.73, 7.24, 8.66]
+        # Function to determine quartal based on month
+        def determine_quartal(month):
+            if 1 <= month <= 3: 
+                return 0  # First quartal
+            elif 4 <= month <= 6:
+                return 1  # Second quartal
+            elif 7 <= month <= 9:
+                return 2  # Third quartal
+            else:
+                return 3  # Fourth quartal
+
+        # Map each month to its corresponding quartal
+        df_input['Quartal'] = df_input['MO'].apply(determine_quartal)
+
+        # Assign the price of exported electricity based on the quartal
+        df_input['Price_Export_Energy'] = df_input['Quartal'].apply(lambda x: price_export_energy[x])
 
         # Calculate the mean of these prices using numpy
         price_export_energy = np.mean(price_export_energy)

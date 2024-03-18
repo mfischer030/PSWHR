@@ -17,7 +17,7 @@ def paths_configuration(user):
         input_path  = r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\inputData\Rubigen_2019-2022_irradiance_Hourly.xlsx'
         demand_path = r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\inputData\200923_Lastang 2015-2020_Rubigen.xlsx'
         heat_path = r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\inputData\Heat_Inputs_year_2022.xlsx'
-        function_path = r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\functions'
+        function_path = r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\PSWHR\PSWHR\PSWHR\functions'
         export_path = r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\results'
     
     elif user == 'christian':

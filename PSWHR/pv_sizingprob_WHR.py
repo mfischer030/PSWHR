@@ -5,12 +5,11 @@ Created on Mon Dec 18 18:26:35 2023
 @author: fism
 """
 import pandas as pd
-import hvplot.pandas
 import numpy as np
-import matplotlib.pyplot as plt
 import gurobipy as gp
 from gurobipy import Model, GRB
 import sys # 
+from dash import Dash, html, dcc
 
 """
 Introduction: sizing and operational optimization problem
@@ -31,6 +30,10 @@ The objective of this optimization is to minimze the cost function:
 user = 'maxime'    # 'christian', 'gabriele', 'maxime'
 from config import paths_configuration
 input_path, demand_path, heat_path, function_path, export_path = paths_configuration(user)
+#------------------------------------------------------------------------------
+# Choose energy tariff
+#------------------------------------------------------------------------------
+energy_tariff = "Blue" # Choose from "Green","Blue","Grey"
 
 #------------------------------------------------------------------------------
 # Import data
@@ -49,7 +52,7 @@ df_demand_heat = pd.read_excel(heat_path)
 heat_35degC_demand = df_demand_heat['Heating_35degC_kW'].values  
 heat_65degC_demand = df_demand_heat['DHW_65degC_kW'].values     
 
-from plotting_module import heat_demand_plot
+from plotting_module_plotly import heat_demand_plot
 heat_demand_plot(heat_35degC_demand,heat_65degC_demand)
 #------------------------------------------------------------------------------
 # Input parameters
@@ -59,7 +62,7 @@ k    = 1.4                               # Ratio cp/cv [-]
 R_H2 = 4.1242 * 1000                     # Individual Gas constant H2 [J/kg*K]
 HHV  = 39.39 * 3600 * 1000               # Higher heating value of H2 in [J/kg] = 39.39 kWh/kg
 
-project_lifetime     = 25   # in [y] - variable is not used for the moment... Gabriele: do you have a reference for this value by chance? Maxime: 2023_Wang et al - 20 years
+project_lifetime     = 25   # in [y] 2023_Wang et al - 20 years
 annual_interest_rate = 0.04 # Discount rate, as encouraged by EU, from Rox
 
 # Electricity prices in [EUR/MWh]
@@ -84,7 +87,8 @@ if timeline_choice == 'year':
     print(df_input['ts'].iloc[0])  # Print first datetime to verify
 
 #------------------------------------------------------------------------------
-# Efficiencies of components in [-]--------------------------------------------
+# Efficiencies of components in [-]
+#------------------------------------------------------------------------------
 
 # PV: from Roxanne
 # ELY: 
@@ -97,7 +101,8 @@ eta = {'PV': 0.21,'ELY': 0.6,'C': 0.7526,'TANK': 0.95,'FC': 0.5,}              #
 #eta = {'PV': 0.21,'ELY': 1,'C': 1,'TANK': 1,'FC': 1}                           # Optimal      
 
 #------------------------------------------------------------------------------
-# Unit prices of components / capital costs in [€/W] => from Roxanne-----------
+# Unit prices of components / capital costs in [€/W] 
+#------------------------------------------------------------------------------
 # PV:   in [€/W] | 2023_Tay Son Le: 881 USD/year | 2018_Gabrielli 300€/m2 
 # ELY:  in [€/W] | 2023_IEA-GlobalH2Review: PEM - 2kUSD/kW - reduction to 600 USD/kW
 # C:    in [€/W] | 2020_Pan et al: 1228 (¥/kW)
@@ -112,8 +117,6 @@ UP  = {'PV': 0.8,'ELY': 0.556,'C': 0.0038,'TANK': 7.47/(3600000),'FC': 0.6, 'HP'
 
 
 # UP = {'PV': 0.8,'ELY': 1.7/10,'C': 0.0076,'TANK': 1644/(10*HHV),'FC': 1.680/10} #Old values
-
-
 
 # Annual maintenance cost as fraction of total cost => from Roxanne------------
 maintenance = {
@@ -155,13 +158,13 @@ S_ELY_min = 0           # Min. size ELY where problem is feasible [W] - from Rox
 
 # Calculating the spezific work of the compresso, from Minutillo et al. 2021
 # (Analyzing the levelized cost of hydrogen eq 1+2) => from Roxanne 
-T_in_H2 = 65 + 273.15                       # H2 temperature (=T_cat=T_an) [K]  # Gabriele: this could probably be 65 degC, see for example: https://www.sciencedirect.com/science/article/pii/S0360319923015410
-p_out   = 350                               # Compressor outlet pressure [bar]  # Gabriele: is your p_out at 820 bar? Please see in the litearture what value is set here, I guess it depends on the pressure you store the hydrogen in the tank;
-p_in    = 30                                # Compressor inlet pressure [bar]   # Gabriele: 50 is fine I think, but please check this with Christian. the PEM electrolyzer at Empa works at 30 bar actually
+T_in_H2 = 65 + 273.15                       # H2 temperature (=T_cat=T_an) [K]  
+p_out   = 350                               # Compressor outlet pressure [bar] = H2 storage pressure 
+p_in    = 30                                # Compressor inlet pressure [bar]  PEM electrolyzer at Empa works at 30 bar 
 L_is_C  = (k/(k-1)) * R_H2 * T_in_H2 * (((p_out/p_in)**((k-1)/k)) - 1) # Specific work compressor [J/kg] 
 
 # Maximal TANK energy capacity (J) => 4 days storage capacity
-S_TANK_max = E_demand_day * 14 * 3600                     # E_demand_day in [Wh]  #Gabriele: E_demand_day is in [Wh], correct? why do you multiply for deltat? MAxime: to convert Wh in J (1 Wh = 3600 J)
+S_TANK_max = E_demand_day * 14 * 3600                     # E_demand_day in [Wh]  
 S_TANK_H2_max = S_TANK_max / HHV                          # equivalent in kg_H2
 
 # Maximal FC size as the maximal power demand divided by eff in [W]
@@ -196,10 +199,11 @@ S_HEX_ELY_max = P_th_ELY_max / (U_HEX * T_log)  # Maximum heat exchanger surface
 S_HEX_FC_max  = P_th_FC_max / (U_HEX * T_log)   # Maximum heat exchanger surface [m2]
 S_HEX_max = S_HEX_ELY_max + S_HEX_FC_max
 
-COP_carnot= T_HT_out / (T_HT_out - T_out) # Maximum coefficient of performance HP
-COP       = 0.5 * COP_carnot              # Real COP, as in Tiktak
+# Coefficient of performance (COP)
+COP_carnot= T_HT_out / (T_HT_out - T_out)             # Maximum COP HP
+COP       = 0.5 * COP_carnot                          # Real COP, as in Tiktak
 #------------------------------------------------------------------------------
-# Prompt the user to choose the scenario
+# Prompt the user to choose "Grid" or "Off-Grid" scenario
 scenario_choice = input("Enter 'grid' for grid-connected scenario or 'off-grid' for an off-grid scenario: ").lower()
 # Check the user's choice and set relevant parameters accordingly
 if scenario_choice == 'grid':
@@ -242,6 +246,7 @@ m_cw_HT  = m.addVars(nHours, lb=0, ub=m_cw_max, name="m_cw_HT")                #
 m_cw_MT  = m.addVars(nHours, lb=0, ub=m_cw_max, name="m_cw_LT")                # Medium Temp. water mass flow ELY + FC
 P_th_HT  = m.addVars(nHours, lb=0, ub=P_th_max, name="P_th_HT")  
 P_th_MT  = m.addVars(nHours, lb=0, ub=P_th_max, name="P_th_LT")
+
 S_HP     = m.addVar(lb=0, ub=P_th_max, name="S_HP")
 S_HEX    = m.addVar(lb=0, ub=S_HEX_max, name="S_HEX")
 # S_HEX  = m.addVar(lb=0, ub=P_th_max, name="S_HEX")  # Uncomment if S_HEX is needed
@@ -288,7 +293,7 @@ for t in range(nHours):
     m.addConstr((P_FC[t]   <= S_FC ),  name= "upper_Size_Constraint_FC")
     
 
-m.addConstr(gp.quicksum(P_imp) <= 0.35 * gp.quicksum(P_demand), name= "GridUse")
+m.addConstr(gp.quicksum(P_imp) <= 1 * gp.quicksum(P_demand), name= "GridUse")
 
 # Initializing FC power
 m.addConstr(P_FC[0]   <= E_TANK[0] / deltat, name= "InitialFC")                                    
@@ -299,7 +304,7 @@ m.addConstr(E_TANK[0] == E_TANK[nHours-1], name='Periodicity') # 08.02: added na
 
 # Overall energy balance: left => consumers | right => generators
 # m.addConstrs((P_ELY[t] + P_C[t] + P_exp[t] + P_demand[t] <= P_PV[t] + P_imp[t] + P_FC[t]  for t in range(nHours)), name='EnergyBalance') 
-m.addConstrs((P_ELY[t] + (P_th_HT[t] + P_th_MT[t])/COP + P_C[t] + P_exp[t] + P_demand[t] <= P_PV[t] + P_imp[t] + P_FC[t]  for t in range(nHours)), name='EnergyBalance') 
+m.addConstrs((P_ELY[t] + (P_th_HT[t])/COP + P_C[t] + P_exp[t] + P_demand[t] <= P_PV[t] + P_imp[t] + P_FC[t]  for t in range(nHours)), name='EnergyBalance') 
 
 # Iterate over each month and add constraints based on P_imp[t] for timesteps in that month
 for month in months:
@@ -334,8 +339,6 @@ for t in range(nHours):
 #------------------------------------------------------------------------------
 # Run cost function
 #------------------------------------------------------------------------------
-energy_tariff = "Blue"
-
 system_sizes = {'PV': S_PV,'ELY': S_ELY,'C': S_C,'TANK': S_TANK,'FC': S_FC,
 'HEX': S_HEX,'HP': S_HP}
 
@@ -350,7 +353,7 @@ cost_maint, cost_WHR] = totalAnnualCost(
                         df_input, nHours, timeline_choice
                         )
 
-# Total annual costs in [€/y]----------------------------------------------
+# Total annual costs in [€/y]--------------------------------------------------
 cost = cost_inst + cost_op + cost_maint
 
 #------------------------------------------------------------------------------
@@ -376,8 +379,10 @@ elif m.status == GRB.TIME_LIMIT:
 
 # Print the status message for more details => check here: https://www.gurobi.com/documentation/current/refman/optimization_status_codes.html 
 print(f"Optimization status: {m.status}")
+
 #------------------------------------------------------------------------------
-# Retrieve values of variables for further analysis----------------------------
+# Retrieve values of variables for further analysis
+#------------------------------------------------------------------------------
 
 # For Gurobi tupledict object
 P_ELY  = [P_ELY[t].X  for t in range(nHours)]
@@ -458,13 +463,18 @@ print("Area_PV = {:.2f} square meters".format(Area_PV))
 # Plot main results------------------------------------------------------------
 
 # Import the plotting module
-from plotting_module import plot_power_generation, plot_component_sizes, plot_HESS_results, plot_costs_and_prices
+from plotting_module_plotly import plot_power_generation, plot_component_sizes, plot_HESS_results, plot_costs_and_prices
+# from plotting_module import plot_power_generation, plot_component_sizes, plot_HESS_results, plot_costs_and_prices
 
 # Call the plotting functions as needed
 plot_power_generation(P_PV, P_imp, P_exp, df_input)
 plot_component_sizes(S_PV, S_PV_max, S_ELY, S_ELY_max, S_C, S_C_max, S_FC, S_FC_max, S_TANK, S_TANK_max)
 plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input)
 plot_costs_and_prices(cost_inst, cost_op, cost, cost_maint, df_input)
+
+# Generate the figures using the adapted functions
+fig_power_generation = plot_power_generation(df_input, P_PV, P_imp, P_exp)
+fig_component_sizes = plot_component_sizes(S_PV, S_PV_max, S_ELY, S_ELY_max, S_C, S_C_max, S_FC, S_FC_max, S_TANK, S_TANK_max)
 
 #------------------------------------------------------------------------------
 # Export results to excel -----------------------------------------------------
