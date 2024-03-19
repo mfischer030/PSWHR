@@ -6,6 +6,7 @@ Created on Mon Dec 18 18:26:35 2023
 """
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 import gurobipy as gp
 from gurobipy import Model, GRB
 import sys # 
@@ -28,12 +29,17 @@ The objective of this optimization is to minimze the cost function:
 # Choose user or adapt paths in config.py module
 #------------------------------------------------------------------------------
 user = 'maxime'    # 'christian', 'gabriele', 'maxime'
+
 from config import paths_configuration
 input_path, demand_path, heat_path, function_path, export_path = paths_configuration(user)
 #------------------------------------------------------------------------------
-# Choose energy tariff
+# Setting up the model
 #------------------------------------------------------------------------------
+# Choose energy tariff
 energy_tariff = "Blue" # Choose from "Green","Blue","Grey"
+
+# Flag to include/exclude battery in the optimization model
+include_battery = False
 
 #------------------------------------------------------------------------------
 # Import data
@@ -43,8 +49,7 @@ sys.path.append(function_path)
 
 # Import data and generate variables using the get_data function---------------
 from import_data import get_data
-df_input, df_demand, irradiance, P_demand, timeline_choice = get_data(input_path, demand_path)
-
+irradiance, P_demand, T_amb, df_input, df_demand, timeline_choice = get_data(input_path, demand_path)
 
 # Heat demand data (from NEST building @ empa, year 2022)----------------------
 df_demand_heat = pd.read_excel(heat_path)
@@ -52,7 +57,7 @@ df_demand_heat = pd.read_excel(heat_path)
 heat_35degC_demand = df_demand_heat['Heating_35degC_kW'].values  
 heat_65degC_demand = df_demand_heat['DHW_65degC_kW'].values     
 
-from plotting_module_plotly import heat_demand_plot
+from plotting_module import heat_demand_plot
 heat_demand_plot(heat_35degC_demand,heat_65degC_demand)
 #------------------------------------------------------------------------------
 # Input parameters
@@ -66,7 +71,7 @@ project_lifetime     = 25   # in [y] 2023_Wang et al - 20 years
 annual_interest_rate = 0.04 # Discount rate, as encouraged by EU, from Rox
 
 # Electricity prices in [EUR/MWh]
-cost_imp_el = df_input['price_Eur_MWh'].values # hourly cost to import Maxime: values changed
+cost_imp_el = df_input['price_Eur_MWh'].values # hourly cost to import 
 cost_exp_el = df_input['Price_DayAhed'].values # hourly cost to export 
 
 # Revenues from WHR in [€/kWh]
@@ -89,21 +94,21 @@ if timeline_choice == 'year':
 #------------------------------------------------------------------------------
 # Efficiencies of components in [-]
 #------------------------------------------------------------------------------
-
 # PV: from Roxanne
-# ELY: 
+# ELY: 2023_van_der_roest (74-79%)
 # C: from Roxanne | 2020_Pan et al: 0.9
 # TANK: 2023_Wang et al
 # FC: 2021_cigolotti Comprehensive Review on FC Technology for Stationary Applications: Electric Efficiency PEMFC: [38,38,37,40] in [%]
 
-eta = {'PV': 0.21,'ELY': 0.6,'C': 0.7526,'TANK': 0.95,'FC': 0.5,}              # Realistic
-#eta = {'PV': 0.21,'ELY': 0.8,'C': 0.8763,'TANK': 0.975,'FC': 0.75}
+eta = {'PV': 0.21,'ELY': 0.74,'C': 0.7526,'TANK': 0.95,'FC': 0.5,}              # Realistic
+#eta = {'PV': 0.21,'ELY': 0.87,'C': 0.8763,'TANK': 0.975,'FC': 0.75}
 #eta = {'PV': 0.21,'ELY': 1,'C': 1,'TANK': 1,'FC': 1}                           # Optimal      
 
 #------------------------------------------------------------------------------
 # Unit prices of components / capital costs in [€/W] 
 #------------------------------------------------------------------------------
 # PV:   in [€/W] | 2023_Tay Son Le: 881 USD/year | 2018_Gabrielli 300€/m2 
+# BAT:  Unit price of the battery in CHF/kWh
 # ELY:  in [€/W] | 2023_IEA-GlobalH2Review: PEM - 2kUSD/kW - reduction to 600 USD/kW
 # C:    in [€/W] | 2020_Pan et al: 1228 (¥/kW)
 # TANK: in [EUR/J], 1644 [EUR/kgH2] | 2018_Gabrielli: {20.7;13.6;10.9} in [€/kWh] | 2023_A Review on the Cost Analysis of H2 Gas Storage Tanks for FCV: 2020:9.34 €/kWh 2025: 8.40€/kWh Ultimate: 7.47€/kWh
@@ -111,9 +116,9 @@ eta = {'PV': 0.21,'ELY': 0.6,'C': 0.7526,'TANK': 0.95,'FC': 0.5,}              #
 # HEX: in [€/m2]
 Fixed_HEX = 5291.9 # Fixed cost for heat exchanger [EUR]
 
-#UP = {'PV': 0.8,'ELY': 1.7,'C': 0.0076,'TANK': 9.34/(3.6*10**6),'FC': 2, 'HP': 0.576, 'HEX': 77.79}       # Realistic
-#UP = {'PV': 0.8,'ELY': 1.128,'C': 0.00506,'TANK': 8.4/(3.6*10**6),'FC': 1.3, 'HP': 0.238, 'HEX': 40}
-UP  = {'PV': 0.8,'ELY': 0.556,'C': 0.0038,'TANK': 7.47/(3600000),'FC': 0.6, 'HP': 0, 'HEX': 0}             # Optimal
+# UP = {'PV': 0.8,'BAT': 500,'ELY': 1.7,'C': 0.0076,'TANK': 9.34/(3.6*10**6),'FC': 2, 'HP': 0.576, 'HEX': 77.79}       # Realistic
+#UP = {'PV': 0.8,'BAT': 500,'ELY': 1.128,'C': 0.00506,'TANK': 8.4/(3.6*10**6),'FC': 1.3, 'HP': 0.238, 'HEX': 40}
+UP  = {'PV': 0.8, 'BAT': 500,'ELY': 0.556,'C': 0.0038,'TANK': 7.47/(3600000),'FC': 0.6, 'HP': 0, 'HEX': 0}         # Optimal
 
 
 # UP = {'PV': 0.8,'ELY': 1.7/10,'C': 0.0076,'TANK': 1644/(10*HHV),'FC': 1.680/10} #Old values
@@ -121,6 +126,7 @@ UP  = {'PV': 0.8,'ELY': 0.556,'C': 0.0038,'TANK': 7.47/(3600000),'FC': 0.6, 'HP'
 # Annual maintenance cost as fraction of total cost => from Roxanne------------
 maintenance = {
     'PV': 0.0158,       # Annual maintenance PV
+    'BAT': 0.02,        # Annual cost maintenance battery
     'ELY': 0.02,        # Annual maintenance electrolyser
     'C': 0.08,          # Annual maintenance compressor
     'TANK': 0.03,       # Annual maintenance storage tank
@@ -131,6 +137,7 @@ maintenance = {
 
 # Lifetime of the components in [years]----------------------------------------
 life = {'PV': 25,    # Roxanne: 30 | 2023_Tya Son Le: 25 years
+        'BAT': 10,   # From Gabriele
         'ELY': 10,   # 2023_Wang et al: 5 years | 2023_Tay Son Le: 15 years || Maxime: Before value was 20
         'C': 20,     # 2020_Pan et al: 20 years
         'TANK': 35,  # 2023_Wang et al: 20 years | 2023_Tay Son Le: 25 years
@@ -145,12 +152,23 @@ E_demand_day = sum(P_demand)/days # Gabriele: this is [Wh], correct, Maxime: yes
 # Maximal daily power demand in [W]
 P_peak_max = np.max(P_demand)
 
+# Battery Parameters
+battery_params = {
+    'eff_ch': 0.95,         # Battery charging efficiency
+    'eff_disch': 0.95,      # Battery discharging efficiency
+    'eff_sd': 0.99,         # Battery self-discharge efficiency
+    'C_b_max': 50*3600000,  # Max battery capacity in [J]
+    'C_b_min': 0,           # Min battery capacity in [J] - typically set to 0
+    'SOC_max': 0.8,         # Max state of charge of the battery to increase lifetime
+    'SOC_min': 0.2          # Min state of charge of the battery to increase lifetime
+}
+
 #------------------------------------------------------------------------------
 # Defining maximal SIZES of the components
 #------------------------------------------------------------------------------
 
 # Area_PV_max  = P_peak_max / (eta['PV'] * np.mean(irradiance)) # Maximum PV area [m2]
-Area_PV_max  = 2000 # Maximum PV area [m2] => how to set, quantify the maximum pv area?
+Area_PV_max  = 3500 # Maximum PV area [m2] => how to set, quantify the maximum pv area?
 
 # Electrolyser max and min nominal power (W)   
 S_ELY_max = 1000*1000   # Maximal Electrolyzer size in [W]
@@ -185,9 +203,9 @@ P_th_ELY_max = (1 - eta['ELY']) * S_ELY_max # max heat recovered from ELY in [W]
 P_th_FC_max  = (1 - eta['FC'])  * S_FC_max  # max heat recovered from FC in [W]
 P_th_max = P_th_ELY_max + P_th_FC_max
 
-m_cw_FC_max  = P_th_FC_max / (c_p * (T_out - T_in))                   # Cooling water maximum mass flow in [kg/s]
-m_cw_ELY_max = P_th_ELY_max / (c_p * (T_out - T_in))                  # Cooling water maximum mass flow in [kg/s]
-m_cw_max     = P_th_max / (c_p * (T_out - T_in))  # Cooling water maximum mass flow in [kg/s]
+m_cw_FC_max  = P_th_FC_max / (c_p * (T_out - T_in))      # Cooling water maximum mass flow in [kg/s]
+m_cw_ELY_max = P_th_ELY_max / (c_p * (T_out - T_in))     # Cooling water maximum mass flow in [kg/s]
+m_cw_max     = P_th_max / (c_p * (T_out - T_in))         # Cooling water maximum mass flow in [kg/s]
 
 T_MT_in   = 26        # MT DHN water inlet temperature HEX [°C] from NEST
 T_MT_out  = 36        # MT DHN water outlet temperature HEX [°C] from NEST
@@ -197,7 +215,7 @@ U_HEX     = 2         # Overall heat transfer coeff HEX [kW/m2/K], swedish thesi
 
 S_HEX_ELY_max = P_th_ELY_max / (U_HEX * T_log)  # Maximum heat exchanger surface [m2]
 S_HEX_FC_max  = P_th_FC_max / (U_HEX * T_log)   # Maximum heat exchanger surface [m2]
-S_HEX_max = S_HEX_ELY_max + S_HEX_FC_max
+S_HEX_max     = S_HEX_ELY_max + S_HEX_FC_max
 
 # Coefficient of performance (COP)
 COP_carnot= T_HT_out / (T_HT_out - T_out)             # Maximum COP HP
@@ -236,12 +254,10 @@ P_imp     = m.addVars(nHours, lb=0, ub=P_imp_ub,   name="P_imp")               #
 P_max_imp = m.addVars(months, lb=0, ub=P_imp_ub,   name="P_max_imp")
 P_exp     = m.addVars(nHours, lb=0, ub=P_exp_ub,   name="P_exp")               # Exported electricity to the Grid in [W] # Check upper-bound; #gabriele: replace max(P_ELY) with S_ELY. In general, avoid using max() when defining constraints or design variables.
 
-
 # Waste Heat recovery varibles
 m_cw_ELY = m.addVars(nHours, lb=0, ub=m_cw_ELY_max, name="m_cw")               # Cooling water ELY mass flow
 m_cw_FC  = m.addVars(nHours, lb=0, ub=m_cw_FC_max, name="m_cw")   
-  
-               
+
 m_cw_HT  = m.addVars(nHours, lb=0, ub=m_cw_max, name="m_cw_HT")                # Hight Temp water mass flow ELY + FC
 m_cw_MT  = m.addVars(nHours, lb=0, ub=m_cw_max, name="m_cw_LT")                # Medium Temp. water mass flow ELY + FC
 P_th_HT  = m.addVars(nHours, lb=0, ub=P_th_max, name="P_th_HT")  
@@ -251,18 +267,65 @@ S_HP     = m.addVar(lb=0, ub=P_th_max, name="S_HP")
 S_HEX    = m.addVar(lb=0, ub=S_HEX_max, name="S_HEX")
 # S_HEX  = m.addVar(lb=0, ub=P_th_max, name="S_HEX")  # Uncomment if S_HEX is needed
 
+if include_battery:
+    P_ch    = m.addVars(nHours, name="P_ch")                                                    # Power charged to the battery
+    P_disch = m.addVars(nHours, name="P_disch")                                                 # Power discharged from the battery
+    E_b     = m.addVars(nHours + 1, lb=0, ub=battery_params['C_b_max'], name="E_b")             # Energy in the battery at each time step
+    C_b     = m.addVar(lb=battery_params['C_b_min'], ub=battery_params['C_b_max'], name="C_b")  # Battery Capacity
 
 #------------------------------------------------------------------------------
-# Additional variables definition
-# maximum PV size needs to be defined to define the upper bound of the design variable.
-P_PV = [irradiance[t] * eta['PV'] * Area_PV for t in range(nHours)]  # Hourly PV power generation [W]
-P_PV_peak = 1000 * eta['PV'] * Area_PV  # Peak power for investment cost [W]
+# Additional calculations
+#------------------------------------------------------------------------------
+# PV calculation
+# Sources: De Soto W et al. (2006); Sun V et al. (2020)
+def pv_efficiency(irradiance, T_amb):
+    eta_PV_ref  = 0.15  # Consider changing back to 0.21 
+    T_PV_ref    = 25    # Reference temperature of the pv cell in [°C]
+    beta_PV_ref = 0.004 # in [K]
+    gamma_PV    = 0.12
+    NOCT        = 45
+    
+    # Calculate T_cell based on ambient Temperature T_amb
+    T_cell = T_amb + (NOCT - 20) * irradiance / 800
+
+    # Initialize eff_cell as a zeros array of the same length as irradiance
+    eta_cell = np.zeros(len(irradiance))
+
+    # Loop through each irradiance value
+    for i in range(len(irradiance)): 
+        if irradiance[i] == 0:
+            eta_cell[i] = 0
+        else:
+            eta_cell[i] = eta_PV_ref * (1 - beta_PV_ref * (T_cell[i] - T_PV_ref) + gamma_PV * np.log10(irradiance[i]))
+    
+    return eta_cell
+
+# Calling the function which calculates the relative efficiency
+eta_cell = pv_efficiency(irradiance, T_amb)
+# Generate dataframe for plot
+df_pv = pd.DataFrame({'irradiance': irradiance,'T_amb': T_amb,'eta_cell': eta_cell})
+
+# # Plot
+# plt.figure()
+# pc = plt.scatter(df_pv['irradiance'], df_pv['eta_cell'], c=df_pv['T_amb'], cmap='jet')
+# plt.colorbar(label='Temperature [C]', ax=plt.gca()) # Adding a colorbar with a label
+# pc.set_alpha(0.25) # Setting the alpha for the scatter plot
+# plt.grid(alpha=0.5) # Adding grid to the plot with some transparency
+# plt.ylim(bottom=0.15)  # # Setting the lower limit for y-axis, adjusted for clarity
+# plt.xlabel('Irradiance [W/m²]')
+# plt.ylabel('Relative efficiency [-]')
+# plt.show()
+
+P_PV = [irradiance[t] * eta_cell[t] * Area_PV  for t in range(nHours)]          # Hourly PV power generation [W]
+# P_PV = [irradiance[t] * eta['PV'] * Area_PV  for t in range(nHours)]          # Hourly PV power generation [W]
+    
+P_PV_peak = 1000 * max(eta_cell) * Area_PV  # Peak power for investment cost [W]
 S_PV = P_PV_peak
 # Gabriele: do you have a reference for the definition of P_PV_peak you adopted? I normally consider the peak power from Standard Test Conditions (STC), for 
 # which irradiance is fixed at 1000 W/m2. I think it is fairer, otherwise you have your peak power depending on sun availability, and given that your unit 
 # price is CHF/kW, it would not be fair to have an investiment cost depending on sun availability (how much units you install instead depends on the sun availability)
 
-
+#------------------------------------------------------------------------------
 # Hydrogen mass flow
 # Nominal mass flow hydrogen [kg/h]                                          
 mdot_H2_nom = (S_ELY * eta["ELY"] * deltat) / HHV                
@@ -275,17 +338,17 @@ P_C = [mdot_H2[t] * L_is_C / (eta['C']* deltat)  for t in range(nHours)]
 
 #------------------------------------------------------------------------------
 # Constraints
+#------------------------------------------------------------------------------
 
-for t in range(1, nHours):                                                      # Gabriele: as you know, vectors in python starts at index 0, so please make sure you are always imposing conditions also for the initial timestep
+for t in range(1, nHours):
     # constraint for the energy balance in time over the storage component
-    m.addConstr(E_TANK[t] == E_TANK[t-1] + P_ELY[t] * eta['ELY'] * deltat - ((P_FC[t] * deltat) / eta['FC']), name='HESS Balance') #Gabriele: can you please check in the results that this energy balance is respected? Please check over two/three random timesteps, and also over the year, i.e. integral for PEM power, tank energy and FC power. This should differ by the efficiency terms. 
+    m.addConstr(E_TANK[t] == E_TANK[t-1] + P_ELY[t] * eta['ELY'] * deltat - ((P_FC[t] * deltat) / eta['FC']), name='HESS Balance')  
     
     # constraint for the ELY power not to exceed the storage capacity
-    m.addConstr(P_ELY[t]  <= (S_TANK - E_TANK[t-1]) / deltat, name='ELY')       # Gabriele: this might be correct as it is already specified in line 148, but please double check that the efficiency is not needed in this inequality
+    m.addConstr(P_ELY[t]  <= (S_TANK - E_TANK[t-1]) / deltat, name='ELY')       
     
     # constraint for the FC to only use hydrogen available in the storage
-    m.addConstr(P_FC[t]   <= E_TANK[t-1] / deltat, name='FC')                   # Gabriele: same comment as for line 150
-
+    m.addConstr(P_FC[t]   <= E_TANK[t-1] / deltat, name='FC')                   
 
 for t in range(nHours):
     m.addConstr((P_ELY[t]  <= S_ELY),  name="upper_Size_Constraint_ELY")
@@ -296,15 +359,18 @@ for t in range(nHours):
 m.addConstr(gp.quicksum(P_imp) <= 1 * gp.quicksum(P_demand), name= "GridUse")
 
 # Initializing FC power
-m.addConstr(P_FC[0]   <= E_TANK[0] / deltat, name= "InitialFC")                                    
+m.addConstr(P_FC[0] <= E_TANK[0] / deltat, name= "InitialFC")                                    
 
 # constraint for H2 storage equal at final and last time step (periodicity)
 m.addConstr(E_TANK[0] == E_TANK[nHours-1], name='Periodicity') # 08.02: added name to cosntraint
 
 
 # Overall energy balance: left => consumers | right => generators
-# m.addConstrs((P_ELY[t] + P_C[t] + P_exp[t] + P_demand[t] <= P_PV[t] + P_imp[t] + P_FC[t]  for t in range(nHours)), name='EnergyBalance') 
-m.addConstrs((P_ELY[t] + (P_th_HT[t])/COP + P_C[t] + P_exp[t] + P_demand[t] <= P_PV[t] + P_imp[t] + P_FC[t]  for t in range(nHours)), name='EnergyBalance') 
+if include_battery:
+    m.addConstrs((P_ELY[t] + (P_th_HT[t])/COP + P_C[t] + P_ch[t]/battery_params['eff_ch'] + P_exp[t] + P_demand[t] <= P_PV[t] + P_disch[t]*battery_params['eff_disch'] + P_imp[t] + P_FC[t]  for t in range(nHours)), name='EnergyBalance') 
+else:
+    m.addConstrs((P_ELY[t] + (P_th_HT[t])/COP + P_C[t] + P_exp[t] + P_demand[t] <= P_PV[t] + P_imp[t] + P_FC[t]  for t in range(nHours)), name='EnergyBalance')
+    
 
 # Iterate over each month and add constraints based on P_imp[t] for timesteps in that month
 for month in months:
@@ -312,6 +378,18 @@ for month in months:
     for t in timestep_indices:
         m.addConstr(P_max_imp[month] >= P_imp[t], name=f"max_monthly_constraint_{month}_{t}")
 #m.addConstr(P_max_imp == gp.max_(P_imp[t] for t in range (nHours)))
+
+if include_battery:
+    # Energy balance for the battery storage
+    m.addConstrs(E_b[i + 1] == E_b[i] * battery_params['eff_sd'] + P_ch[i] * battery_params['eff_ch'] - P_disch[i] / battery_params['eff_disch'] for i in range(nHours))
+    # Discharge power not exceeding available power
+    m.addConstrs(P_disch[i] <= E_b[i] for i in range(nHours))
+    # SOC constraints
+    m.addConstrs(E_b[i] <= battery_params['SOC_max'] * C_b for i in range(nHours))
+    m.addConstrs(E_b[i] >= battery_params['SOC_min'] * C_b for i in range(nHours))
+    # Periodicity
+    m.addConstr(E_b[nHours] == E_b[0])  # Ensuring energy in the battery at the end matches the start
+
 
 # Waste Heat Recovery Constraints----------------------------------------------
 
@@ -339,8 +417,13 @@ for t in range(nHours):
 #------------------------------------------------------------------------------
 # Run cost function
 #------------------------------------------------------------------------------
-system_sizes = {'PV': S_PV,'ELY': S_ELY,'C': S_C,'TANK': S_TANK,'FC': S_FC,
-'HEX': S_HEX,'HP': S_HP}
+if include_battery:
+    S_BAT = C_b
+else:
+    S_BAT = 0
+    
+system_sizes = {'PV': S_PV, 'BAT': S_BAT, 'ELY': S_ELY,'C': S_C,
+                'TANK': S_TANK,'FC': S_FC,'HEX': S_HEX,'HP': S_HP}
 
 from cost import totalAnnualCost
 
@@ -392,6 +475,14 @@ P_imp  = [P_imp[t].X  for t in range(nHours)]
 P_exp  = [P_exp[t].X  for t in range(nHours)]
 P_max_imp = [P_max_imp[month].X for month in months]
 
+if include_battery:
+    E_b     = [E_b[t].X for t in range(nHours)]
+    P_ch    = [P_ch[t].X for t in range(nHours)]
+    P_disch = [P_disch[t].X for t in range(nHours)]
+    C_b     = C_b.X
+    S_BAT   = S_BAT.X
+    
+
 m_cw_ELY = [m_cw_ELY[t].X  for t in range(nHours)]
 m_cw_FC  = [m_cw_FC[t].X   for t in range(nHours)]
 m_cw_HT  = [m_cw_HT[t].X   for t in range(nHours)]
@@ -410,6 +501,7 @@ S_ELY     = S_ELY.X
 S_TANK    = S_TANK.X
 S_FC      = S_FC.X
 S_HEX     = S_HEX.X
+S_HP      = S_HP.X
 
 # For Gurobi LinExpr
 cost            = cost.getValue()
@@ -430,12 +522,13 @@ S_PV        = S_PV.getValue()
 all_costs = {
     "installation cost":  cost_inst,
     "imported electricity": cost_elec_imp,
-    "exported electricty": cost_elec_exp,
+    "exported electricity": cost_elec_exp,
     "grid use fees": cost_grid_usage,
     "total electricity cost": cost_elec,
     "operational cost": cost_op,
     "maintenance cost": cost_maint,
-    "revenues WHR": cost_WHR
+    "revenues WHR": cost_WHR,
+    "TAC": cost
     }
 #------------------------------------------------------------------------------
 S_PV_max = 1000*eta['PV']*Area_PV_max
@@ -457,33 +550,43 @@ print("LCOE = {:.3f} € / MWh".format(LCOE))
 
 #------------------------------------------------------------------------------
 # Display results
-
 print("Area_PV = {:.2f} square meters".format(Area_PV))
 #------------------------------------------------------------------------------
 # Plot main results------------------------------------------------------------
 
 # Import the plotting module
-from plotting_module_plotly import plot_power_generation, plot_component_sizes, plot_HESS_results, plot_costs_and_prices
-# from plotting_module import plot_power_generation, plot_component_sizes, plot_HESS_results, plot_costs_and_prices
+# from plotting_module_plotly import plot_power_generation, plot_component_sizes, plot_HESS_results, plot_costs_and_prices
+from plotting_module import plot_power_generation, plot_component_sizes, plot_HESS_results, plot_battery_operation, plot_costs_and_prices
 
 # Call the plotting functions as needed
-plot_power_generation(P_PV, P_imp, P_exp, df_input)
+# plot_power_generation(P_PV, P_imp, P_exp, df_input, nHours)
 plot_component_sizes(S_PV, S_PV_max, S_ELY, S_ELY_max, S_C, S_C_max, S_FC, S_FC_max, S_TANK, S_TANK_max)
 plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input)
-plot_costs_and_prices(cost_inst, cost_op, cost, cost_maint, df_input)
+plot_costs_and_prices(all_costs, df_input)
 
-# Generate the figures using the adapted functions
-fig_power_generation = plot_power_generation(df_input, P_PV, P_imp, P_exp)
-fig_component_sizes = plot_component_sizes(S_PV, S_PV_max, S_ELY, S_ELY_max, S_C, S_C_max, S_FC, S_FC_max, S_TANK, S_TANK_max)
+if include_battery:
+    plot_battery_operation(P_demand, P_imp, P_ch, P_disch, E_b, battery_params, C_b, nHours)
 
+fig_power_generation = plot_power_generation(P_PV, P_imp, P_exp, df_input, nHours)
 #------------------------------------------------------------------------------
 # Export results to excel -----------------------------------------------------
 
 from results_export import export_optimization_results
 
-variable_names = ['irradiance', 'P_demand', 'P_PV', 'P_imp', 'cost_imp_el',
-                  'P_exp', 'cost_exp_el', 'P_ELY', 'mdot_H2', 'P_C', 'E_TANK',
-                  'P_FC']
+if include_battery:
+    variable_names = [
+        'irradiance', 'P_demand', 'P_PV', 'P_imp', 'cost_imp_el',
+        'P_exp', 'cost_exp_el', 'P_ELY', 'mdot_H2', 'P_C', 'E_TANK',
+        'P_FC', 'E_b', 'P_ch', 'P_disch', 'm_cw_ELY', 'm_cw_FC', 'm_cw_HT',
+        'm_cw_MT', 'P_th_HT', 'P_th_MT'
+        ]
+else:
+    variable_names = [
+        'irradiance', 'P_demand', 'P_PV', 'P_imp', 'cost_imp_el',
+        'P_exp', 'cost_exp_el', 'P_ELY', 'mdot_H2', 'P_C', 'E_TANK',
+        'P_FC', 'm_cw_ELY', 'm_cw_FC', 'm_cw_HT',
+        'm_cw_MT', 'P_th_HT', 'P_th_MT'
+        ]
 
 results = {name: [] for name in variable_names}
 
@@ -500,6 +603,17 @@ for t in range(nHours):
     results['P_C'].append(P_C[t])
     results['E_TANK'].append(E_TANK[t])
     results['P_FC'].append(P_FC[t])
+    if include_battery:
+        results['E_b'].append(E_b[t])
+        results['P_ch'].append(P_ch[t])
+        results['P_disch'].append(P_disch[t])
+    results['m_cw_ELY'].append(m_cw_ELY[t])
+    results['m_cw_FC'].append(m_cw_FC[t])
+    results['m_cw_HT'].append(m_cw_HT[t])
+    results['m_cw_MT'].append(m_cw_MT[t])
+    results['P_th_HT'].append(P_th_HT[t])
+    results['P_th_MT'].append(P_th_MT[t])
+
 
 # Add optimization status to results
 results['status'] = m.status

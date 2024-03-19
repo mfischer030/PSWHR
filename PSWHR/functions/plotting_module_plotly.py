@@ -7,6 +7,7 @@ Created on Thu Mar 14 16:49:06 2024
 
 import pandas as pd
 import plotly.express as px
+from dash import Dash, html
 
 def heat_demand_plot(heat_35degC_demand, heat_65degC_demand):
     nHours = len(heat_35degC_demand)

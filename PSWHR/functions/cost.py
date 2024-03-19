@@ -23,22 +23,6 @@ def totalAnnualCost(system_sizes, energy_tariff,
     
     cost_inst  = sum((size * UP[component]) / life[component] for component, size in system_sizes.items())
     cost_maint = sum(size * UP[component] * maintenance[component] for component, size in system_sizes.items())
-
-    # # Operation costs in [€/y]-------------------------------------------------
-    # # Defining multiplier variable für OP cost for choosen timeline
-    # if timeline_choice == 'week':
-    #     multiplier = 52                               # Assuming 52 weeks in a year
-    # elif timeline_choice == 'month':
-    #     multiplier = 12                               # 12 months in a year
-    # else:
-    #     multiplier = 1                                # Default to yearly calculation with no multiplication needed
-
-    # cost_energy    = sum((P_imp[t]/10**6 * cost_imp_el[t] - P_exp[t]/10**6 * cost_exp_el[t]) for t in range(nHours)) * multiplier
-    # # cost_griduse = 12*P_max_imp*16
-    # cost_griduse   = sum(((P_imp[t] + P_exp[t]) / 10**3) * (2.01 + 5.75)/100  for t in range(nHours)) * multiplier
-    # cost_WHR       = sum((P_th_LT[t]/1000 * cost_export_heatLT + P_th_HT[t]/1000 * cost_export_heatHT) for t in range(nHours))
-
-    # cost_op = cost_energy + cost_griduse - cost_WHR
     
     # Operation costs in [€/y]-------------------------------------------------
     def electricity_prices(energy_tariff, P_imp, P_max_imp, P_exp, df_input, timeline_choice, vat_included=False):

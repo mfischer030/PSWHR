@@ -6,6 +6,7 @@ Created on Mon Feb  5 15:25:19 2024
 """
 import plotly.express as px
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -41,14 +42,13 @@ def heat_demand_plot(heat_35degC_demand,heat_65degC_demand):
 
     plt.tight_layout()
     plt.show()
-
-# def plot_power_generation(P_PV, P_imp, P_exp, df_input):
+    
+# def plot_power_generation(P_PV, P_imp, P_exp, df_input, nHours):
 #     # Plot power generation, imported, and exported power
 #     fig, ax = plt.subplots(1, 1, figsize=(20, 10))  # Use a single axis
-#     ax.plot(range(len(df_input)), [P_PV[t]  / 1000 for t in range(len(df_input))], label='PV Generation', color='orange')
-#     ax.plot(range(len(df_input)), [P_imp[t] / 1000 for t in range(len(df_input))], label='Imported Power', color='blue')
-#     # Plot P_exp as negative values
-#     ax.plot(range(len(df_input)), [-P_exp[t] / 1000 for t in range(len(df_input))], label='Exported Power', color='green')
+#     ax.plot(range(len(df_input)), [P_PV[t] / 1000 for t in range(nHours)], label='PV Generation', color='orange')
+#     ax.plot(range(len(df_input)), [P_imp[t] / 1000 for t in range(nHours)], label='Imported Power', color='blue')
+#     ax.plot(range(len(df_input)), [-P_exp[t] / 1000 for t in range(nHours)], label='Exported Power', color='green')
     
 #     ax.set_ylabel('Power [kW]')
 #     ax.legend(loc='upper left')
@@ -56,14 +56,10 @@ def heat_demand_plot(heat_35degC_demand,heat_65degC_demand):
 #     ax.set_xlabel('Time [h]')  # Set the x-label here
 
 #     plt.show()
-
-def plot_power_generation(P_PV, P_imp, P_exp, df_input):
-    # Assuming df_input has an index that can serve as the x-axis (time)
-    x_values = df_input.index  # or range(len(df_input)) if there's no specific index
     
-    # Create a DataFrame for Plotly Express
+def plot_power_generation(P_PV, P_imp, P_exp, df_input, nHours):
     df_plot = pd.DataFrame({
-        'Time': x_values,
+        'Time': range(nHours),
         'PV Generation [kW]': [p / 1000 for p in P_PV],
         'Imported Power [kW]': [p / 1000 for p in P_imp],
         'Exported Power [kW]': [-p / 1000 for p in P_exp]
@@ -86,59 +82,7 @@ def plot_power_generation(P_PV, P_imp, P_exp, df_input):
     fig.update_layout(title='PV Generation, Imported, and Exported Power Overview',
                       legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
     
-    fig.write_html('first_figure.html', auto_open=True)
-    
-# def plot_power_generation(P_PV, P_imp, P_exp, df_input):
-#     # Plot power generation, imported, and exported power
-#     fig, ax = plt.subplots(1, 1, figsize=(20, 6))  # Use a single axis with a larger figsize for readability
-    
-#     # Plot and fill PV Generation
-#     ax.fill_between(range(len(df_input)), [P_PV[t] / 1000 for t in range(len(df_input))], color='orange', alpha=0.3)
-#     ax.plot(range(len(df_input)), [P_PV[t] / 1000 for t in range(len(df_input))], label='PV Generation', color='orange')
-    
-#     # Plot and fill Imported Power
-#     ax.fill_between(range(len(df_input)), [P_imp[t] / 1000 for t in range(len(df_input))], color='magenta', alpha=0.3)
-#     ax.plot(range(len(df_input)), [P_imp[t] / 1000 for t in range(len(df_input))], label='Imported Power', color='magenta')
-    
-#     # Plot and fill Exported Power as negative values
-#     ax.fill_between(range(len(df_input)), [-P_exp[t] / 1000 for t in range(len(df_input))], color='green', alpha=0.3)
-#     ax.plot(range(len(df_input)), [-P_exp[t] / 1000 for t in range(len(df_input))], label='Exported Power', color='green')
-    
-#     ax.set_ylabel('Power [kW]')  # Increase the font size for the y-axis label
-#     ax.set_xlabel('Time [h]')  # Increase the font size for the x-axis label
-#     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.17),
-#           fancybox=False, shadow=False, ncol=5)
-#     #ax.legend(loc='upper right')  # Increase the font size for the legend
-#     #ax.set_title('PV Generation, Imported, and Exported Power')  
-    
-#     # Increase the font size for the tick labels
-#     ax.tick_params(axis='both', which='major')
-    
-#     plt.show()
-
-
-# def plot_component_sizes(S_PV, S_PV_max, S_ELY, S_FC, S_TANK, S_ELY_max, S_FC_max, S_TANK_max):
-#     # Plot sizes of components (PV, ELY, FC, TANK)
-#     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(25, 8))
-    
-#     # Integrating S_PV and S_PV_max into the first subplot (now ax1)
-#     components_axis1 = ['S_PV', 'S_PV_max', 'S_ELY', 'S_ELY_max', 'S_FC', 'S_FC_max']
-#     component_sizes_axis1 = [S_PV /1000, S_PV_max / 1000, S_ELY / 1000, S_ELY_max / 1000, S_FC / 1000, S_FC_max / 1000]
-#     colors_axis1 = ['mediumturquoise', 'aquamarine', 'blue', 'lightblue', 'green', 'lightgreen']
-    
-#     ax1.bar(components_axis1, component_sizes_axis1, color=colors_axis1, width=0.7)
-#     ax1.set_ylabel('Size (Kilowatts)')
-    
-#     # Second subplot (now ax2) remains unchanged, for TANK sizes
-#     components_axis2 = ['S_TANK', 'S_TANK_max']
-#     component_sizes_axis2 = [S_TANK / 3600000, S_TANK_max / 3600000]  # Converting to Kilowatt-hours
-#     colors_axis2 = ['orange', 'lightcoral']
-    
-#     ax2.bar(components_axis2, component_sizes_axis2, color=colors_axis2, width=0.7)
-#     ax2.set_ylabel('Size (Kilowatt-hours)')
-
-#     plt.tight_layout()
-#     plt.show()
+    fig.write_html('plot_power_generation.html', auto_open=True)
 
 def plot_component_sizes(S_PV, S_PV_max, S_ELY, S_ELY_max, S_C, S_C_max, S_FC, S_FC_max, S_TANK, S_TANK_max):
     # Setting the Seaborn color palette
@@ -171,37 +115,6 @@ def plot_component_sizes(S_PV, S_PV_max, S_ELY, S_ELY_max, S_C, S_C_max, S_FC, S
 
     plt.tight_layout()
     plt.show()
-    
-# def plot_component_sizes(Area_PV, Area_PV_max, S_ELY, S_FC, S_TANK, S_ELY_max, S_FC_max, S_TANK_max):
-#     # Plot sizes of components (ELY, FC, TANK)
-#     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12, 4))
-    
-#     components_axis1 = ['Area_PV', 'Area_PV_max']
-#     component_sizes_axis1 = [Area_PV, Area_PV_max]
-#     colors_axis1 = ['mediumturquoise', 'aquamarine']
-
-#     ax1.bar(components_axis1, component_sizes_axis1, color=colors_axis1, width=0.7)
-#     #ax1.set_xlabel('Components')
-#     ax1.set_ylabel('Size (Squaremeters)')
-    
-#     components_axis2 = ['S_ELY', 'S_ELY_max', 'S_FC', 'S_FC_max']
-#     component_sizes_axis2 = [S_ELY / 1000, S_ELY_max / 1000, S_FC / 1000, S_FC_max / 1000]
-#     colors_axis2 = ['blue', 'lightblue', 'green', 'lightgreen']
-    
-#     ax2.bar(components_axis2, component_sizes_axis2, color=colors_axis2, width=0.7)
-#     #ax2.set_xlabel('Components')
-#     ax2.set_ylabel('Size (Kilowatts)')
-
-#     components_axis3 = ['S_TANK', 'S_TANK_max']
-#     component_sizes_axis3 = [S_TANK / 3600000, S_TANK_max / 3600000]
-#     colors_axis3 = ['orange', 'lightcoral']
-
-#     ax3.bar(components_axis3, component_sizes_axis3, color=colors_axis3, width=0.7)
-#     #ax3.set_xlabel('Components')
-#     ax3.set_ylabel('Size (Kilowatt-hours)')
-
-#     plt.tight_layout()
-#     plt.show()
 
 
 def plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input):
@@ -253,24 +166,55 @@ def plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TAN
     plt.tight_layout()
     plt.show()
 
-def plot_costs_and_prices(cost_inst, cost_op, cost, cost_maint, df_input):
-    """
-    Plot installation cost, operation cost, total cost, and electricity prices.
+def plot_battery_operation(P_demand, P_imp, P_ch, P_disch, E_b, battery_params, C_b, nHours):
+    # First set of tile plots
+    SOC_min = battery_params['SOC_min']
+    SOC_max = battery_params['SOC_max']
+    power_supplied = [P_disch[t] + P_imp[t] - P_ch[t] for t in range(nHours)]
+    
+    fig, axs = plt.subplots(3, 1, figsize=(12, 18))
+    
+    # Tile 1: Energy demand and sum of discharged battery power and import grid vs time
+    axs[0].plot(P_demand, label='Energy Demand (kWh)', color='blue')
+    axs[0].plot(power_supplied, label='Sum of Discharged and Imported Power minus charged (kWh)', color='red')
+    #axs[0].set_title('Energy Demand and Supply Over Time - They should be equal; I guess I counted battery eff twice somewhere')
+    axs[0].set_xlabel('Time (hours)')
+    axs[0].set_ylabel('Energy (kWh)')
+    axs[0].legend()
 
+    # Tile 2: Import power, charging power, and discharging power vs time
+    axs[1].plot(P_imp, label='Import Power (kW)', color='green')
+    axs[1].plot(P_ch, label='Charging Power (kW)', color='orange')
+    axs[1].plot(P_disch, label='Discharging Power (kW)', color='purple')
+    #axs[1].set_title('Power Flows Over Time')
+    axs[1].set_xlabel('Time (hours)')
+    axs[1].set_ylabel('Power (kW)')
+    axs[1].legend()
+
+    # Tile 3: Energy in the battery vs time
+    axs[2].plot(E_b, label='Battery Energy (kWh)', color='cyan')
+    #axs[2].set_title('Battery State of Charge Over Time')
+    axs[2].axhline(y=SOC_min * C_b, color='orange', linestyle='--', 
+                   label=f'Min SOC ({SOC_min * 100}%) Capacity: {SOC_min * C_b:.2f} kWh')
+    axs[2].axhline(y=SOC_max * C_b, color='green', linestyle='--', 
+                   label=f'Max SOC ({SOC_max * 100}%) Capacity: {SOC_max * C_b:.2f} kWh')
+    axs[2].axhline(y=C_b, color='red', linestyle='-', 
+                   label=f'Selected Capacity: {C_b:.2f} kWh')
+    axs[2].set_xlabel('Time (hours)')
+    axs[2].set_ylabel('Energy (kWh)')
+    axs[2].set_ylim([0, C_b * 1.1])
+    axs[2].legend()
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_costs_and_prices(all_costs, df_input):
+    """
     Parameters:
-    - cost_inst: LinExpr object of gurobipy module, installation cost
-    - cost_op: LinExpr object of gurobipy module, operation cost
-    - cost: LinExpr object of gurobipy module, total cost
-    - cost_main: LinExpr object of gurobipy module, main cost
-    - cost_startup: LinExpr object of gurobipy module, startup cost
-    - df_input: DataFrame, input data
+    - all_costs: dict, contains various cost components and revenues
+    - df_input: DataFrame, input data including electricity prices
     """
-
-    # Set Seaborn style
-    sns.set(style="whitegrid")
-    palette = sns.color_palette("pastel")
-
-    # Plotting
     fig, (ax1, ax2) = plt.subplots(nrows=2, figsize=(15, 15))
 
     # Plot electricity prices
@@ -279,22 +223,41 @@ def plot_costs_and_prices(cost_inst, cost_op, cost, cost_maint, df_input):
     ax1.set_xlabel('Time [h]', fontsize=24)
     ax1.set_ylabel('Price [€/Wh]', fontsize=28)
     ax1.legend(fontsize=24)
-    
-    # Increase the font size for the tick labels
     ax1.tick_params(axis='both', which='major', labelsize=24)
 
-    # Plot installation cost, operation cost, main cost, startup cost, and total cost
     bar_width = 0.4
-    bar1 = ax2.bar(0, cost_inst / 1000, bar_width, label='Installation Cost', color=palette[2])
-    bar2 = ax2.bar(1, cost_op   / 1000, bar_width, label='Operation Cost', color=palette[3])
-    bar3 = ax2.bar(2, cost_maint / 1000, bar_width, label='Main Cost', color=palette[4])
-    bar4 = ax2.bar(3, cost      / 1000, bar_width, label='Total Cost', color=palette[6])
+
+    # Define bars and labels for the legend
+    bars_and_labels = [
+        ("Exported Electricity", -all_costs["exported electricity"] / 1000, palette[2]),
+        ("Revenues WHR", -all_costs["revenues WHR"] / 1000, palette[3]),
+        ("Imported Electricity", all_costs["imported electricity"] / 1000, palette[4]),
+        ("Grid Use Fees", all_costs["grid use fees"] / 1000, palette[5])
+    ]
+
+    # Plot operational cost bars with cumulative stacking
+    cumulative_negative = cumulative_positive = 0
+    for name, value, color in bars_and_labels:
+        if value < 0:
+            ax2.bar(1, value, bar_width, bottom=cumulative_negative, color=color, label=name)
+            cumulative_negative += value
+        else:
+            ax2.bar(1, value, bar_width, bottom=cumulative_positive, color=color, label=name)
+            cumulative_positive += value
+
+    # Plot other costs without adding to legend (skip label argument)
+    ax2.bar(0, all_costs["installation cost"] / 1000, bar_width, color='skyblue')
+    ax2.bar(2, all_costs["maintenance cost"] / 1000, bar_width, color='lightgreen')
+    ax2.bar(3, all_costs["TAC"] / 1000, bar_width, color='salmon')
 
     ax2.set_ylabel('Cost [k€/y]', fontsize=28)
     ax2.set_xticks([0, 1, 2, 3])
-    ax2.set_xticklabels(['Installation Cost', 'Operation Cost', 'Maintenance Cost', 'Total Cost'], fontsize=24)
-    ax2.tick_params(axis='both', which='major', labelsize=24)  # Set tick label font size for ax2
+    ax2.set_xticklabels(['Installation Cost', 'Operational Cost', 'Maintenance Cost', 'Total Annual Cost'], fontsize=18)
+    ax2.tick_params(axis='both', which='major', labelsize=24)
+
+    # Customize legend to only include the four operational cost parameters
+    handles, labels = ax2.get_legend_handles_labels()
+    ax2.legend(handles[-4:], labels[-4:], fontsize=20, loc='upper left')  # Adjust to ensure only the last four items are included
 
     plt.tight_layout()
     plt.show()
-
