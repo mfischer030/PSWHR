@@ -3,9 +3,12 @@
 Created on Wed Mar 20 10:55:43 2024
 
 @author: fism
-Battery model from Hanmin:
+Battery model from:
 
-Experimental implementation of an emission-aware prosumer with online flexibility quantification and provision
+Cai, Hanmin; Heer, Philipp (2021): 
+    Experimental implementation of an emission-aware prosumer with online 
+    flexibility quantification and provision. 
+Online verfügbar unter http://arxiv.org/pdf/2110.12831.
 
 URL: https://arxiv.org/abs/2110.12831
 
@@ -36,8 +39,8 @@ model = Model("Battery_Model")
 E_b          = model.addVars(nHours, name="E_b")                               # State of Charge
 P_ch         = model.addVars(nHours, name="P_ch")                              # Power for charging
 P_disch      = model.addVars(nHours, name="P_disch")                           # Power for discharging
-epsilon_ebat = model.addVars(nHours, name="epsilon_ebat")                      # Slack variables
-z_ebat       = model.addVars(nHours, vtype=GRB.BINARY, name="z_ebat")          # Binary variable for mutual exclusiveness
+# epsilon_ebat = model.addVars(nHours, name="epsilon_ebat")                      # Slack variables
+# z_ebat       = model.addVars(nHours, vtype=GRB.BINARY, name="z_ebat")          # Binary variable for mutual exclusiveness
 
 #------------------------------------------------------------------------------
 # Constraints
@@ -60,7 +63,7 @@ for t in range(nHours):
     model.addConstr(SOC_min - epsilon_ebat[t] <= E_b[t])
     model.addConstr(E_b[t] <= SOC_max)
 
-    # Slack variable constraint (equation 15)
+    # Slack variable constraint (equation 15) => soft constraint
     model.addConstr(epsilon_ebat[t] >= 0)
 
 #------------------------------------------------------------------------------

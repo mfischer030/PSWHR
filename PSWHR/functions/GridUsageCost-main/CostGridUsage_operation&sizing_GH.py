@@ -37,15 +37,15 @@ threshold_hours = 3500  # Threshold for low/high grid usage in hours
 # these two coefficients are needed for the big-M constraints
 # Tipically, the M value is selected as a large value, but too large values must be avoided to avoid numerical instabilities
 # the selection of the M values depend on the problem you are tackling
-M_hours = 5*P_dem_peak # used for the big-M constraint on the grid_usage
-M_threshold = hours_in_year # used for the big-M for the threshold
+M_hours     = 5*P_dem_peak    # used for the big-M constraint on the grid_usage
+M_threshold = hours_in_year   # used for the big-M for the threshold
 
 # reduced test - I reduce vector length to visualize better results and have faster tests
-# factor=1 # set factor to 1 to run the 1-year test
-# factor=8760//(24*30*3) # factor to reduce analysis to 1 quarter
-# factor=8760//(24*30) # factor to reduce analysis to 1 month
-# factor=8760//(24*7) # factor to reduce analysis to 1 week
-factor = 8760//(24) # factor to reduce analysis to 1 day
+# factor = 1                          # set factor to 1 to run the 1-year test
+# factor = 8760//(24*30*3)            # factor to reduce analysis to 1 quarter
+# factor = 8760//(24*30)              # factor to reduce analysis to 1 month
+# factor = 8760//(24*7)               # factor to reduce analysis to 1 week
+factor = 8760//(24)                   # factor to reduce analysis to 1 day
 
 hours_in_year   = hours_in_year // factor
 threshold_hours = threshold_hours // factor

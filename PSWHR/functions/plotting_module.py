@@ -10,6 +10,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+kWh2J = 3600*1000
+J2kWh = 1 / (3600*1000)
+
 # Set Seaborn style
 sns.set(style="whitegrid")
 palette = sns.color_palette("husl", 8)  # You can choose a different palette if needed
@@ -140,70 +143,83 @@ def plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TAN
     ax1.plot(range(len(df_input)), [P_ELY[t] / 1000 for t in range(len(df_input))], label='ELY', color=palette[1])
     ax1.plot(range(len(df_input)), [S_ELY / 1000] * len(df_input), label='ELY size', linestyle='--', color=palette[3])
     # ax1.set_xlabel('Time [h]')
-    ax1.set_ylabel('Power [kW]')
+    ax1.set_ylabel('Power [kW]', fontsize=24)
     # ax1.set_ylim([0, S_ELY_max * 1.1 / 1000])
     ax1.set_ylim([0, S_ELY / 1000 * 1.1])
-    ax1.legend(loc='upper right')
+    
+    ax1.tick_params(axis='both', which='major', labelsize=24)
+    ax1.legend(loc='upper right', fontsize=24)
 
     # Plot 2: Size and operation of the FC
     ax2.plot(range(len(df_input)), [P_FC[t] / 1000 for t in range(len(df_input))], label='FC', color=palette[0])
     ax2.plot(range(len(df_input)), [S_FC / 1000] * len(df_input), label='FC size', linestyle=':', color=palette[2])
     # ax2.set_xlabel('Time [h]')
-    ax2.set_ylabel('Power [kW]')
+    ax2.set_ylabel('Power [kW]', fontsize=24)
     # ax2.set_ylim([0, S_FC_max * 1.1 / 1000])
     ax2.set_ylim([0, S_FC / 1000 * 1.1])
-    ax2.legend(loc='upper right')
+    ax2.tick_params(axis='both', which='major', labelsize=24)
+    ax2.legend(loc='upper right', fontsize=24)
 
     # Plot 3: Energy and TANK Size
     ax3.plot(range(len(df_input)), [E_TANK[t] / 3600000 for t in range(len(df_input))], label='TANK', color=palette[5])
     ax3.plot(range(len(df_input)), [S_TANK / 3600000] * len(df_input), label='TANK size', linestyle='-.', color=palette[6])
-    ax3.set_xlabel('Time [h]')
-    ax3.set_ylabel('Energy [kWh]')
+    ax3.set_xlabel('Time [h]', fontsize=24)
+    ax3.set_ylabel('Energy [kWh]', fontsize=24)
     # ax3.set_ylim([0, (S_TANK_max * 1.1) / 3600000])
     ax3.set_ylim([0, S_TANK / 3600000 * 1.1])
-    ax3.legend(loc='upper right')
+    ax3.tick_params(axis='both', which='major', labelsize=24)
+    ax3.legend(loc='upper right', fontsize=24)
 
     plt.tight_layout()
     plt.show()
 
-def plot_battery_operation(P_demand, P_imp, P_ch, P_disch, E_b, battery_params, C_b, nHours):
+def plot_battery_operation(P_demand, P_imp, P_ch, P_ds, E_b, bat_params, C_b_kWh, nHours):
+    
     # First set of tile plots
-    SOC_min = battery_params['SOC_min']
-    SOC_max = battery_params['SOC_max']
-    power_supplied = [P_disch[t] + P_imp[t] - P_ch[t] for t in range(nHours)]
+    SOC_min = bat_params['SOC_min']
+    SOC_max = bat_params['SOC_max']
+    power_supplied = [(P_ds[t] + P_imp[t] - P_ch[t])/1000 for t in range(nHours)]
     
     fig, axs = plt.subplots(3, 1, figsize=(12, 18))
     
     # Tile 1: Energy demand and sum of discharged battery power and import grid vs time
-    axs[0].plot(P_demand, label='Energy Demand (kWh)', color='blue')
+    axs[0].plot(P_demand/1000,       label='Energy Demand (kWh)', color='blue')
     axs[0].plot(power_supplied, label='Sum of Discharged and Imported Power minus charged (kWh)', color='red')
     #axs[0].set_title('Energy Demand and Supply Over Time - They should be equal; I guess I counted battery eff twice somewhere')
-    axs[0].set_xlabel('Time (hours)')
-    axs[0].set_ylabel('Energy (kWh)')
-    axs[0].legend()
+    axs[0].set_xlabel('Time (hours)', fontsize=24)
+    axs[0].set_ylabel('Energy (kWh)', fontsize=24)
+    axs[0].set_ylim([0, 800])
+    
+    axs[0].tick_params(axis='both', which='major', labelsize=24)
+    axs[0].legend(fontsize=20)
 
     # Tile 2: Import power, charging power, and discharging power vs time
-    axs[1].plot(P_imp, label='Import Power (kW)', color='green')
-    axs[1].plot(P_ch, label='Charging Power (kW)', color='orange')
-    axs[1].plot(P_disch, label='Discharging Power (kW)', color='purple')
+    axs[1].plot([P_imp[t] /1000 for t in range(nHours)], label='Import Power (kW)', color='green')
+    axs[1].plot([P_ch[t]  /1000 for t in range(nHours)], label='Charging Power (kW)', color='orange')
+    axs[1].plot([P_ds[t]  /1000 for t in range(nHours)], label='Discharging Power (kW)', color='purple')
     #axs[1].set_title('Power Flows Over Time')
-    axs[1].set_xlabel('Time (hours)')
-    axs[1].set_ylabel('Power (kW)')
-    axs[1].legend()
+    axs[1].set_xlabel('Time (hours)', fontsize=24)
+    axs[1].set_ylabel('Power (kW)',   fontsize=24)
+    axs[1].set_ylim([0, 400])
+    
+    axs[1].tick_params(axis='both', which='major', labelsize=24)
+    axs[1].legend(fontsize=20)
 
     # Tile 3: Energy in the battery vs time
-    axs[2].plot(E_b, label='Battery Energy (kWh)', color='cyan')
+    axs[2].plot([E_b[t]/3600000 for t in range(nHours)], label='Battery Energy (kWh)', color='cyan')
     #axs[2].set_title('Battery State of Charge Over Time')
-    axs[2].axhline(y=SOC_min * C_b, color='orange', linestyle='--', 
-                   label=f'Min SOC ({SOC_min * 100}%) Capacity: {SOC_min * C_b:.2f} kWh')
-    axs[2].axhline(y=SOC_max * C_b, color='green', linestyle='--', 
-                   label=f'Max SOC ({SOC_max * 100}%) Capacity: {SOC_max * C_b:.2f} kWh')
-    axs[2].axhline(y=C_b, color='red', linestyle='-', 
-                   label=f'Selected Capacity: {C_b:.2f} kWh')
-    axs[2].set_xlabel('Time (hours)')
-    axs[2].set_ylabel('Energy (kWh)')
-    axs[2].set_ylim([0, C_b * 1.1])
-    axs[2].legend()
+    axs[2].axhline(y=SOC_min * C_b_kWh, color='orange', linestyle='--', 
+                   label=f'Min SOC ({SOC_min * 100}%) Capacity: {SOC_min * C_b_kWh:.2f} kWh')
+    axs[2].axhline(y=SOC_max * C_b_kWh, color='green', linestyle='--', 
+                   label=f'Max SOC ({SOC_max * 100}%) Capacity: {SOC_max * C_b_kWh:.2f} kWh')
+    axs[2].axhline(y=C_b_kWh, color='red', linestyle='-', 
+                   label=f'Selected Capacity: {C_b_kWh:.2f} kWh')
+    axs[2].set_xlabel('Time (hours)', fontsize=24)
+    axs[2].set_ylabel('Energy (kWh)', fontsize=24)
+    axs[2].set_ylim([0, 500])
+    
+    axs[2].tick_params(axis='both', which='major', labelsize=24)
+    axs[2].legend(fontsize=20)
 
     plt.tight_layout()
     plt.show()

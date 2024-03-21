@@ -39,7 +39,7 @@ input_path, demand_path, heat_path, function_path, export_path = paths_configura
 energy_tariff = "Blue" # Choose from "Green","Blue","Grey"
 
 # Flag to include/exclude battery in the optimization model
-include_battery = False
+include_battery = True
 
 #------------------------------------------------------------------------------
 # Import data
@@ -65,6 +65,7 @@ heat_demand_plot(heat_35degC_demand,heat_65degC_demand)
 # General parameters
 k    = 1.4                               # Ratio cp/cv [-]
 R_H2 = 4.1242 * 1000                     # Individual Gas constant H2 [J/kg*K]
+M_H2= 2.01568                            # in [g/mol]
 HHV  = 39.39 * 3600 * 1000               # Higher heating value of H2 in [J/kg] = 39.39 kWh/kg
 
 project_lifetime     = 25   # in [y] 2023_Wang et al - 20 years
@@ -85,6 +86,9 @@ days   = nHours / 24                          # number of days
 months = df_input['MO'].unique()              # Unique months in the DataFrame
 weeks  = days / 7                             # number of weeks
 deltat = 3600                                 # time step (s)
+
+kWh2J = 3600*1000
+J2kWh = 1 / (3600*1000)
 
 # Convert nHours to datetime format
 if timeline_choice == 'year':
@@ -153,11 +157,11 @@ E_demand_day = sum(P_demand)/days # Gabriele: this is [Wh], correct, Maxime: yes
 P_peak_max = np.max(P_demand)
 
 # Battery Parameters
-battery_params = {
-    'eff_ch': 0.95,         # Battery charging efficiency
-    'eff_disch': 0.95,      # Battery discharging efficiency
-    'eff_sd': 0.99,         # Battery self-discharge efficiency
-    'C_b_max': 50*3600000,  # Max battery capacity in [J]
+bat_params = {
+    'eff_ch': 0.95,         # Battery charging efficiency in [-]
+    'eff_disch': 0.95,      # Battery discharging efficiency in [-] 
+    'eff_sd': 0.99,         # Battery self-discharge efficiency in [-]
+    'C_b_max': 300*kWh2J,  # Max battery capacity in [J]
     'C_b_min': 0,           # Min battery capacity in [J] - typically set to 0
     'SOC_max': 0.8,         # Max state of charge of the battery to increase lifetime
     'SOC_min': 0.2          # Min state of charge of the battery to increase lifetime
@@ -177,7 +181,7 @@ S_ELY_min = 0           # Min. size ELY where problem is feasible [W] - from Rox
 # Calculating the spezific work of the compresso, from Minutillo et al. 2021
 # (Analyzing the levelized cost of hydrogen eq 1+2) => from Roxanne 
 T_in_H2 = 65 + 273.15                       # H2 temperature (=T_cat=T_an) [K]  
-p_out   = 350                               # Compressor outlet pressure [bar] = H2 storage pressure 
+p_out   = 30                               # Compressor outlet pressure [bar] = H2 storage pressure 
 p_in    = 30                                # Compressor inlet pressure [bar]  PEM electrolyzer at Empa works at 30 bar 
 L_is_C  = (k/(k-1)) * R_H2 * T_in_H2 * (((p_out/p_in)**((k-1)/k)) - 1) # Specific work compressor [J/kg] 
 
@@ -268,10 +272,10 @@ S_HEX    = m.addVar(lb=0, ub=S_HEX_max, name="S_HEX")
 # S_HEX  = m.addVar(lb=0, ub=P_th_max, name="S_HEX")  # Uncomment if S_HEX is needed
 
 if include_battery:
-    P_ch    = m.addVars(nHours, name="P_ch")                                                    # Power charged to the battery
-    P_disch = m.addVars(nHours, name="P_disch")                                                 # Power discharged from the battery
-    E_b     = m.addVars(nHours + 1, lb=0, ub=battery_params['C_b_max'], name="E_b")             # Energy in the battery at each time step
-    C_b     = m.addVar(lb=battery_params['C_b_min'], ub=battery_params['C_b_max'], name="C_b")  # Battery Capacity
+    P_ch    = m.addVars(nHours,lb=0, ub=bat_params['C_b_max'], name="P_ch")                                                 # Power charged to the battery
+    P_ds    = m.addVars(nHours,lb=0, ub=bat_params['C_b_max'], name="P_ds")                                                 # Power discharged from the battery
+    E_b     = m.addVars(nHours,lb=0, ub=bat_params['C_b_max'], name="E_b")              # Energy in the battery at each time step
+    C_b     = m.addVar(lb=bat_params['C_b_min'], ub=bat_params['C_b_max'], name="C_b")       # Battery Capacity
 
 #------------------------------------------------------------------------------
 # Additional calculations
@@ -285,7 +289,7 @@ def pv_efficiency(irradiance, T_amb):
     gamma_PV    = 0.12
     NOCT        = 45
     
-    # Calculate T_cell based on ambient Temperature T_amb
+    # Calculate T_cell based on ambient Temperature T_amb (also found in 2015_Guinot et al.)
     T_cell = T_amb + (NOCT - 20) * irradiance / 800
 
     # Initialize eff_cell as a zeros array of the same length as irradiance
@@ -362,41 +366,65 @@ m.addConstr(gp.quicksum(P_imp) <= 1 * gp.quicksum(P_demand), name= "GridUse")
 m.addConstr(P_FC[0] <= E_TANK[0] / deltat, name= "InitialFC")                                    
 
 # constraint for H2 storage equal at final and last time step (periodicity)
-m.addConstr(E_TANK[0] == E_TANK[nHours-1], name='Periodicity') # 08.02: added name to cosntraint
+m.addConstr(E_TANK[0] == E_TANK[nHours-1], name='Periodicity_HESS') # 08.02: added name to cosntraint
 
 
 # Overall energy balance: left => consumers | right => generators
 if include_battery:
-    m.addConstrs((P_ELY[t] + (P_th_HT[t])/COP + P_C[t] + P_ch[t]/battery_params['eff_ch'] + P_exp[t] + P_demand[t] <= P_PV[t] + P_disch[t]*battery_params['eff_disch'] + P_imp[t] + P_FC[t]  for t in range(nHours)), name='EnergyBalance') 
+    m.addConstrs((P_ELY[t] + (P_th_HT[t])/COP + P_C[t] + P_ch[t] + P_exp[t] + P_demand[t] <= P_PV[t] + P_ds[t] + P_imp[t] + P_FC[t]  for t in range(nHours)), name='EnergyBalance') 
 else:
-    m.addConstrs((P_ELY[t] + (P_th_HT[t])/COP + P_C[t] + P_exp[t] + P_demand[t] <= P_PV[t] + P_imp[t] + P_FC[t]  for t in range(nHours)), name='EnergyBalance')
-    
+    m.addConstrs((P_ELY[t] + (P_th_HT[t])/COP + P_C[t]           + P_exp[t] + P_demand[t] <= P_PV[t]           + P_imp[t] + P_FC[t]  for t in range(nHours)), name='EnergyBalance')
 
 # Iterate over each month and add constraints based on P_imp[t] for timesteps in that month
 for month in months:
     timestep_indices = df_input.index[df_input['MO'] == month].tolist()
     for t in timestep_indices:
         m.addConstr(P_max_imp[month] >= P_imp[t], name=f"max_monthly_constraint_{month}_{t}")
-#m.addConstr(P_max_imp == gp.max_(P_imp[t] for t in range (nHours)))
 
+# Battery Constraints ---------------------------------------------------------
 if include_battery:
     # Energy balance for the battery storage
-    m.addConstrs(E_b[i + 1] == E_b[i] * battery_params['eff_sd'] + P_ch[i] * battery_params['eff_ch'] - P_disch[i] / battery_params['eff_disch'] for i in range(nHours))
-    # Discharge power not exceeding available power
-    m.addConstrs(P_disch[i] <= E_b[i] for i in range(nHours))
-    # SOC constraints
-    m.addConstrs(E_b[i] <= battery_params['SOC_max'] * C_b for i in range(nHours))
-    m.addConstrs(E_b[i] >= battery_params['SOC_min'] * C_b for i in range(nHours))
-    # Periodicity
-    m.addConstr(E_b[nHours] == E_b[0])  # Ensuring energy in the battery at the end matches the start
+    for t in range(1, nHours):
+        m.addConstr(E_b[t] == E_b[t-1] * bat_params['eff_sd'] + P_ch[t] * bat_params['eff_ch'] * deltat - ((P_ds[t] * deltat) / bat_params['eff_disch']), name='Battery energy balance')
+    
+    for t in range(nHours):
+        # Discharge power not exceeding available power
+        m.addConstr(P_ds[t] <= E_b[t])
+    
+        # SOC constraints
+        m.addConstr(E_b[t] <= bat_params['SOC_max'] * C_b)
+        m.addConstr(E_b[t] >= bat_params['SOC_min'] * C_b)
+    
+    # Periodicity = Ensuring energy in the battery at the end matches the start
+    m.addConstr(E_b[0] == E_b[nHours-1], name='Periodicity_Battery')
 
+# # Hanmin's battery model:
+# for t in range(nHours):
+#     # E_b update equation constraint (equation 11)
+#     if t < nHours - 1:  # No E_b[t+1] for the last hour
+#         model.addConstr(E_b[t+1] == A_ebat * E_b[t] + B_ebat[0] * P_disch[t] + B_ebat[1] * P_ch[t])
+
+#     # Charging power constraints (equation 12)
+#     model.addConstr(0 <= P_ch[t])
+#     model.addConstr(P_ch[t] <= P_ebat_max * z_ebat[t])
+
+#     # Discharging power constraints (equation 13)
+#     model.addConstr(-P_ebat_max * (1 - z_ebat[t]) <= P_disch[t])
+#     model.addConstr(P_disch[t] <= 0)
+
+#     # State of charge limits (equation 14)
+#     model.addConstr(SOC_min - epsilon_ebat[t] <= E_b[t])
+#     model.addConstr(E_b[t] <= SOC_max)
+
+#     # Slack variable constraint (equation 15)
+#     model.addConstr(epsilon_ebat[t] >= 0)
 
 # Waste Heat Recovery Constraints----------------------------------------------
 
 for t in range(nHours):
     # PEM & FC outlet flow assuming T_HEX and T_in are equivalent for ELY & FC
     m.addConstr(m_cw_ELY[t] == ((1 - eta['ELY']) * P_ELY[t]) / (c_p * (T_HEX - T_in)), "PEM_outlet")
-    m.addConstr(m_cw_FC[t] == ((1 - eta['FC']) * P_FC[t]) / (c_p * (T_HEX - T_in)), "FC_outlet")
+    m.addConstr(m_cw_FC[t]  == ((1 - eta['FC'])  * P_FC[t])  / (c_p * (T_HEX - T_in)), "FC_outlet")
     
     # Cooling flow requirements
     m.addConstr(m_cw_ELY[t] + m_cw_FC[t] >= m_cw_HT[t] + m_cw_MT[t], "massflowBalanceCoolingWater")
@@ -412,7 +440,7 @@ for t in range(nHours):
     m.addConstr(P_th_HT[t] <= S_HP, "HPsize")
 
 # Combined heat exchanger and heat pump constraint
-# m.addConstr(P_th_LT + P_th_HT <= eff_th * (P_ELY - (1 - eta['ELY']) * P_ELY), "HEX_HP")
+# m.addConstr(P_th_T + P_th_HT <= eff_th * (P_ELY - (1 - eta['ELY']) * P_ELY), "HEX_HP")
 
 #------------------------------------------------------------------------------
 # Run cost function
@@ -478,7 +506,7 @@ P_max_imp = [P_max_imp[month].X for month in months]
 if include_battery:
     E_b     = [E_b[t].X for t in range(nHours)]
     P_ch    = [P_ch[t].X for t in range(nHours)]
-    P_disch = [P_disch[t].X for t in range(nHours)]
+    P_ds = [P_ds[t].X for t in range(nHours)]
     C_b     = C_b.X
     S_BAT   = S_BAT.X
     
@@ -531,10 +559,57 @@ all_costs = {
     "TAC": cost
     }
 #------------------------------------------------------------------------------
+# Post processing
+#------------------------------------------------------------------------------
+
 S_PV_max = 1000*eta['PV']*Area_PV_max
 S_C_max = max(mdot_H2) * L_is_C / (eta["C"] * deltat)
+
+# Convert the battery capacity from Joules to Kilowatthours
+if include_battery:
+    C_b_kWh = C_b * J2kWh 
+
+# Function to calculate the volume of hydrogen gas based on temperature and pressure
+def hydrogen_tank_volume(p_out, T_amb, E_TANK, HHV, R_H2, M_H2, nHours):
+    """
+    Calculate the volume of hydrogen gas based on the ideal gas law, considering the compressibility factor.
+    :param p_out: Electrolyser outlet pressure in bar
+    :param T_amb: Ambient Temperature in °C (list of temperatures for each hour)
+    :param mdot_H2: Mass flow rate of hydrogen for each hour
+    :param R_H2: Ideal gas constant for hydrogen
+    :param M_H2: Molar mass of hydrogen
+    :param nHours: Number of hours (length of the time series data)
+    :return: Volume in m3? (list of volumes for each hour)
+    """
+    # Constants for the Z factor calculation
+    A = 4.93482 * 10**(-5)
+    B = 2.04036
+    C = 8.15334 * 10
+    D = -6.5561 * 10**4
+    E = 4.56516 * 10**6
+    
+    V_Tank_H2 = [0] * nHours  # Initialize hydrogen storage volume list
+    
+    for t in range(nHours):
+        T_K = T_amb[t] + 273.15                 # Convert temperature from °C to Kelvin
+        n   = (E_TANK[t] / HHV) / (M_H2/1000)   # Calculate the amount of hydrogen in mol
+        if p_out < 13:
+            Z = 1  # Use Z = 1 for p_out < 13 bar
+        else:
+            # Calculate Z for p_out >= 13 without creating a list
+            Z = 1 + (p_out*100000) * (A + B * T_K**(-1) + C * T_K**(-2) + D * T_K**(-3) + E * T_K**(-4))
+        
+        # Calculate the volume using the modified ideal gas law: PV = ZnRT
+        V_Tank_H2[t] = Z * n * R_H2 * T_K / (p_out * 100000)
+    
+    return V_Tank_H2, Z
+
+if sum(mdot_H2) > 0:
+    V_Tank_H2, Z = hydrogen_tank_volume(p_out, T_amb, E_TANK, HHV, R_H2, M_H2, nHours)
+
 #------------------------------------------------------------------------------
 # Calculate the Levelized Cost Of Hydrogen
+#------------------------------------------------------------------------------
 
 m_H2_year = sum(mdot_H2) * deltat
 
@@ -543,19 +618,24 @@ if sum(mdot_H2) == 0:
     print("No H2 generation")
 else: 
     print("H2 generation")
-        
 
 LCOE = (cost) / (sum(P_imp + P_PV)/10**6)  # Calculate LCOE # Look into the literature how
-print("LCOE = {:.3f} € / MWh".format(LCOE))
 
 #------------------------------------------------------------------------------
 # Display results
-print("Area_PV = {:.2f} square meters".format(Area_PV))
 #------------------------------------------------------------------------------
-# Plot main results------------------------------------------------------------
 
+print("LCOE = {:.3f} € / MWh".format(LCOE))
+print("PV Area = {:.2f} square meters".format(Area_PV))
+
+if sum(mdot_H2) > 0:
+    print("Minimal Hydrogen Tank Size = {:.2f} cubic meters".format(max(V_Tank_H2)))
+
+#------------------------------------------------------------------------------
+# Plotting
+#------------------------------------------------------------------------------
 # Import the plotting module
-# from plotting_module_plotly import plot_power_generation, plot_component_sizes, plot_HESS_results, plot_costs_and_prices
+
 from plotting_module import plot_power_generation, plot_component_sizes, plot_HESS_results, plot_battery_operation, plot_costs_and_prices
 
 # Call the plotting functions as needed
@@ -565,7 +645,7 @@ plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TANK, S
 plot_costs_and_prices(all_costs, df_input)
 
 if include_battery:
-    plot_battery_operation(P_demand, P_imp, P_ch, P_disch, E_b, battery_params, C_b, nHours)
+    plot_battery_operation(P_demand, P_imp, P_ch, P_ds, E_b, bat_params, C_b_kWh, nHours)
 
 fig_power_generation = plot_power_generation(P_PV, P_imp, P_exp, df_input, nHours)
 #------------------------------------------------------------------------------
@@ -577,7 +657,7 @@ if include_battery:
     variable_names = [
         'irradiance', 'P_demand', 'P_PV', 'P_imp', 'cost_imp_el',
         'P_exp', 'cost_exp_el', 'P_ELY', 'mdot_H2', 'P_C', 'E_TANK',
-        'P_FC', 'E_b', 'P_ch', 'P_disch', 'm_cw_ELY', 'm_cw_FC', 'm_cw_HT',
+        'P_FC', 'E_b', 'P_ch', 'P_ds', 'm_cw_ELY', 'm_cw_FC', 'm_cw_HT',
         'm_cw_MT', 'P_th_HT', 'P_th_MT'
         ]
 else:
@@ -606,7 +686,7 @@ for t in range(nHours):
     if include_battery:
         results['E_b'].append(E_b[t])
         results['P_ch'].append(P_ch[t])
-        results['P_disch'].append(P_disch[t])
+        results['P_ds'].append(P_ds[t])
     results['m_cw_ELY'].append(m_cw_ELY[t])
     results['m_cw_FC'].append(m_cw_FC[t])
     results['m_cw_HT'].append(m_cw_HT[t])
