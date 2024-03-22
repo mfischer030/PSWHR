@@ -124,7 +124,7 @@ eta = {'PV': 0.21,'ELY': 0.74,'C': 0.7526,'TANK': 0.95,'FC': 0.5,}              
 # C:    in [€/W] | 2020_Pan et al: 1228 (¥/kW)
 # TANK: in [EUR/J], 1644 [EUR/kgH2] | 2018_Gabrielli: {20.7;13.6;10.9} in [€/kWh] | 2023_A Review on the Cost Analysis of H2 Gas Storage Tanks for FCV: 2020:9.34 €/kWh 2025: 8.40€/kWh Ultimate: 7.47€/kWh
 # FC:   in [€/W] (Wang et. al 2023 - 2kUSD/kW) | 2018_Gabrielli {2160;1680;1320} [€/kW]
-# HEX: in [€/m2]
+# HEX:  in [€/m2] from Roxanne: 77.79 €/m2 | From Christian: 1782CHF/5.2m2 = 342.69 CHF/m2
 Fixed_HEX = 5291.9 # Fixed cost for heat exchanger [EUR]
 
 # UP = {'PV': 0.8,'BAT': 500,'ELY': 1.7,'C': 0.0076,'TANK': 9.34/(3.6*10**6),'FC': 2, 'HP': 0.576, 'HEX': 77.79}       # Realistic
@@ -208,7 +208,7 @@ Technology for Stationary Applications
 T_in  = 57    # Inlet temperature cooling water to HEX in [°C]
 T_out = 62    # Temperature cooling water to applications [°C]
 T_HEX = 64    # Outlet temperature cooling water from HEX [°C]
-c_p   = 4186  # Specific heat capacity cooling water [J/kg/K]
+c_p   = 4186  # Specific heat capacity cooling water [J/kgK]
 
 P_th_ELY_max = (1 - eta['ELY']) * S_ELY_max # max heat recovered from ELY in [W]
 P_th_FC_max  = (1 - eta['FC'])  * S_FC_max  # max heat recovered from FC in [W]
