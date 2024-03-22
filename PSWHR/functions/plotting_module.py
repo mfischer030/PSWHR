@@ -5,6 +5,8 @@ Created on Mon Feb  5 15:25:19 2024
 @author: fism
 """
 import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -24,6 +26,10 @@ plt.rcParams['axes.titlesize'] = 24
 plt.rcParams['xtick.labelsize'] = 24
 plt.rcParams['ytick.labelsize'] = 24
 plt.rcParams['legend.fontsize'] = 24
+
+#------------------------------------------------------------------------------
+# Inputs and Demand plots
+#------------------------------------------------------------------------------
 
 def heat_demand_plot(heat_35degC_demand,heat_65degC_demand):
     # Creating figure and subplots for heat demand
@@ -85,7 +91,12 @@ def plot_power_generation(P_PV, P_imp, P_exp, df_input, nHours):
     fig.update_layout(title='PV Generation, Imported, and Exported Power Overview',
                       legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
     
-    fig.write_html('plot_power_generation.html', auto_open=True)
+    return fig
+    # fig.write_html('plot_power_generation.html', auto_open=True)
+
+#------------------------------------------------------------------------------
+# Component sizes plots
+#------------------------------------------------------------------------------
 
 def plot_component_sizes(S_PV, S_PV_max, S_ELY, S_ELY_max, S_C, S_C_max, S_FC, S_FC_max, S_TANK, S_TANK_max):
     # Setting the Seaborn color palette
@@ -119,6 +130,9 @@ def plot_component_sizes(S_PV, S_PV_max, S_ELY, S_ELY_max, S_C, S_C_max, S_FC, S
     plt.tight_layout()
     plt.show()
 
+#------------------------------------------------------------------------------
+# System operation plots
+#------------------------------------------------------------------------------
 
 def plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input):
     """
@@ -225,6 +239,58 @@ def plot_battery_operation(P_demand, P_imp, P_ch, P_ds, E_b, bat_params, C_b_kWh
     plt.show()
 
 
+def plot_WHR(results):
+    # Convert the results dictionary into a pandas DataFrame
+    df = pd.DataFrame(results)
+    
+    # Create a figure with 2 rows and 1 column
+    fig = make_subplots(rows=2, cols=1,
+                        subplot_titles=("Cooling Water Mass Flows", "Heat Recovery from the Electrolyzer and the Fuel Cell"),
+                        shared_xaxes=True)  # Ensure the x-axis (time) is shared between subplots
+    
+    # Add Cooling Water Mass Flows to the first subplot
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['m_cw_ELY'], name='m_cw_ELY', mode='lines'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['m_cw_FC'], name='m_cw_FC', mode='lines'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['m_cw_HT'], name='m_cw_HT', mode='lines'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['m_cw_MT'], name='m_cw_MT', mode='lines'), row=1, col=1)
+
+    # Add Heat Recovery to the second subplot
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['P_th_HT'], name='P_th_HT', stackgroup='one'), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['P_th_MT'], name='P_th_MT', stackgroup='one'), row=2, col=1)
+    
+    # Add 'P_ELY + P_FC' line plot to the second subplot
+    df['P_ELY_plus_P_FC'] = df['P_ELY'] + df['P_FC']
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['P_ELY_plus_P_FC'], name='P_ELY + P_FC', mode='lines+markers'), row=2, col=1)
+
+    # Update layout to include range slider and selector
+    fig.update_layout(
+        height=800, 
+        title_text="WHR Analysis",
+        xaxis2=dict(
+            rangeslider=dict(
+                visible=True
+            ),
+            type="date",
+            rangeselector=dict(
+                buttons=list([
+                    dict(count=1, label="1m", step="month", stepmode="backward"),
+                    dict(count=6, label="6m", step="month", stepmode="backward"),
+                    dict(count=1, label="YTD", step="year", stepmode="todate"),
+                    dict(count=1, label="1y", step="year", stepmode="backward"),
+                    dict(step="all")
+                ])
+            )
+        )
+    )
+
+    # Save the figure as HTML and automatically open it
+    #fig.write_html("WHR_plot.html", auto_open=True)
+    return fig
+
+#------------------------------------------------------------------------------
+# Cost distribution plots
+#------------------------------------------------------------------------------
+
 def plot_costs_and_prices(all_costs, df_input):
     """
     Parameters:
@@ -277,3 +343,15 @@ def plot_costs_and_prices(all_costs, df_input):
 
     plt.tight_layout()
     plt.show()
+
+# Function to calculate operational cost and create pie chart data
+def costs_pie_chart(all_costs):
+    operational_cost = all_costs['imported electricity'] + all_costs['grid use fees'] - all_costs['exported electricity'] - all_costs['revenues WHR']
+    pie_chart_data = {
+        'Categories': ['Installation Cost', 'Operational Cost', 'Maintenance Cost'],
+        'Values': [all_costs['installation cost'], operational_cost, all_costs['maintenance cost']]
+    }
+    fig = px.pie(pie_chart_data, names='Categories', values='Values', title='Cost Overview')
+    
+    return fig
+    # fig.write_html('costs_pie_chart.html', auto_open=True)

@@ -49,7 +49,7 @@ sys.path.append(function_path)
 
 # Import data and generate variables using the get_data function---------------
 from import_data import get_data
-irradiance, P_demand, T_amb, df_input, df_demand, timeline_choice = get_data(input_path, demand_path)
+irradiance, P_demand, T_amb, df_input, df_demand, timeline_choice, season_choice = get_data(input_path, demand_path)
 
 # Heat demand data (from NEST building @ empa, year 2022)----------------------
 df_demand_heat = pd.read_excel(heat_path)
@@ -93,7 +93,14 @@ J2kWh = 1 / (3600*1000)
 # Convert nHours to datetime format
 if timeline_choice == 'year':
     df_input['ts'] = pd.Timestamp('2019-01-01') + pd.to_timedelta(Time - 1, unit='H')
-    print(df_input['ts'].iloc[0])  # Print first datetime to verify
+else:
+    if season_choice == 'winter': 
+        df_input['ts'] = pd.Timestamp('2019-01-01') + pd.to_timedelta(Time - 1, unit='H')
+    elif season_choice == 'summer':
+        df_input['ts'] = pd.Timestamp('2019-08-01') + pd.to_timedelta(Time - 1, unit='H')
+
+# Convert df_input['ts'] to a list named 'timeline'
+timeline = df_input['ts'].tolist()
 
 #------------------------------------------------------------------------------
 # Efficiencies of components in [-]
@@ -624,34 +631,7 @@ LCOE = (cost) / (sum(P_imp + P_PV)/10**6)  # Calculate LCOE # Look into the lite
 #------------------------------------------------------------------------------
 # Display results
 #------------------------------------------------------------------------------
-
-print("LCOE = {:.3f} € / MWh".format(LCOE))
-print("PV Area = {:.2f} square meters".format(Area_PV))
-
-if sum(mdot_H2) > 0:
-    print("Minimal Hydrogen Tank Size = {:.2f} cubic meters".format(max(V_Tank_H2)))
-
-#------------------------------------------------------------------------------
-# Plotting
-#------------------------------------------------------------------------------
-# Import the plotting module
-
-from plotting_module import plot_power_generation, plot_component_sizes, plot_HESS_results, plot_battery_operation, plot_costs_and_prices
-
-# Call the plotting functions as needed
-# plot_power_generation(P_PV, P_imp, P_exp, df_input, nHours)
-plot_component_sizes(S_PV, S_PV_max, S_ELY, S_ELY_max, S_C, S_C_max, S_FC, S_FC_max, S_TANK, S_TANK_max)
-plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input)
-plot_costs_and_prices(all_costs, df_input)
-
-if include_battery:
-    plot_battery_operation(P_demand, P_imp, P_ch, P_ds, E_b, bat_params, C_b_kWh, nHours)
-
-fig_power_generation = plot_power_generation(P_PV, P_imp, P_exp, df_input, nHours)
-#------------------------------------------------------------------------------
-# Export results to excel -----------------------------------------------------
-
-from results_export import export_optimization_results
+# Generate a dictionnary with the results
 
 if include_battery:
     variable_names = [
@@ -670,6 +650,8 @@ else:
 
 results = {name: [] for name in variable_names}
 
+results['ts'] = timeline
+
 for t in range(nHours):
     results['irradiance'].append(irradiance[t])
     results['P_demand'].append(P_demand[t])
@@ -678,15 +660,21 @@ for t in range(nHours):
     results['cost_imp_el'].append(cost_imp_el[t])
     results['P_exp'].append(P_exp[t])
     results['cost_exp_el'].append(cost_exp_el[t])
+    
+    #HESS
     results['P_ELY'].append(P_ELY[t])
     results['mdot_H2'].append(mdot_H2[t])
     results['P_C'].append(P_C[t])
     results['E_TANK'].append(E_TANK[t])
     results['P_FC'].append(P_FC[t])
+    
+    # Battery
     if include_battery:
         results['E_b'].append(E_b[t])
         results['P_ch'].append(P_ch[t])
         results['P_ds'].append(P_ds[t])
+    
+    # Waste Heat 
     results['m_cw_ELY'].append(m_cw_ELY[t])
     results['m_cw_FC'].append(m_cw_FC[t])
     results['m_cw_HT'].append(m_cw_HT[t])
@@ -697,6 +685,42 @@ for t in range(nHours):
 
 # Add optimization status to results
 results['status'] = m.status
+
+
+print("LCOE = {:.3f} € / MWh".format(LCOE))
+print("PV Area = {:.2f} square meters".format(Area_PV))
+
+if sum(mdot_H2) > 0:
+    print("Minimal Hydrogen Tank Size = {:.2f} cubic meters".format(max(V_Tank_H2)))
+
+#------------------------------------------------------------------------------
+# Plotting
+#------------------------------------------------------------------------------
+# Import the plotting module
+
+from plotting_module import plot_power_generation, plot_component_sizes, plot_HESS_results, plot_battery_operation, plot_costs_and_prices, costs_pie_chart, plot_WHR
+
+# Call the plotting functions as needed
+# plot_power_generation(P_PV, P_imp, P_exp, df_input, nHours)
+plot_component_sizes(S_PV, S_PV_max, S_ELY, S_ELY_max, S_C, S_C_max, S_FC, S_FC_max, S_TANK, S_TANK_max)
+plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input)
+plot_costs_and_prices(all_costs, df_input)
+
+
+if include_battery:
+    plot_battery_operation(P_demand, P_imp, P_ch, P_ds, E_b, bat_params, C_b_kWh, nHours)
+
+# For plotly graphs
+fig_power_generation = plot_power_generation(P_PV, P_imp, P_exp, df_input, nHours)
+fig_costs_pie_chart  = costs_pie_chart(all_costs)
+
+plot_WHR(results)
+
+#------------------------------------------------------------------------------
+# Export results to excel 
+#------------------------------------------------------------------------------
+
+from results_export import export_optimization_results
 
 # Define the path to the results directory
 results_directory = export_path
