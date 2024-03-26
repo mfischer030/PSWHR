@@ -180,7 +180,8 @@ def plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TAN
     ax3.set_xlabel('Time [h]', fontsize=24)
     ax3.set_ylabel('Energy [kWh]', fontsize=24)
     # ax3.set_ylim([0, (S_TANK_max * 1.1) / 3600000])
-    ax3.set_ylim([0, S_TANK / 3600000 * 1.1])
+    # ax3.set_ylim([0, S_TANK / 3600000 * 1.1])
+    ax3.set_ylim([0, 5000])
     ax3.tick_params(axis='both', which='major', labelsize=24)
     ax3.legend(loc='upper right', fontsize=24)
 

@@ -36,10 +36,13 @@ input_path, demand_path, heat_path, function_path, export_path = paths_configura
 # Setting up the model
 #------------------------------------------------------------------------------
 # Choose energy tariff
-energy_tariff = "Blue" # Choose from "Green","Blue","Grey"
+energy_tariff = "Green" # Choose from "Green","Blue","Grey"
 
 # Flag to include/exclude battery in the optimization model
 include_battery = True
+
+# Choose the "grid-connectivity" of the model: Grid Connectivity Factor
+GCF = 100  # [%] of power which can be imported from the grid from the total energy demand
 
 #------------------------------------------------------------------------------
 # Import data
@@ -75,9 +78,9 @@ annual_interest_rate = 0.04 # Discount rate, as encouraged by EU, from Rox
 cost_imp_el = df_input['price_Eur_MWh'].values # hourly cost to import 
 cost_exp_el = df_input['Price_DayAhed'].values # hourly cost to export 
 
-# Revenues from WHR in [€/kWh]
-cost_export_heatMT = 0.2 #0.09 
-cost_export_heatHT = 0.2 #0.1189
+# Revenues from WHR in [€/kWh]: Information on DHN Heat prices can be found here: https://www.preisueberwacher.admin.ch/pue/de/home/themen/infrastruktur/fernwaerme.html
+cost_export_heatMT = 0.15 #0.09 
+cost_export_heatHT = 0.22 #0.1189
 
 # Time parameters
 nHours = len(df_input)                        # number of hours simulated
@@ -105,11 +108,13 @@ timeline = df_input['ts'].tolist()
 #------------------------------------------------------------------------------
 # Efficiencies of components in [-]
 #------------------------------------------------------------------------------
-# PV: from Roxanne
-# ELY: 2023_van_der_roest (74-79%)
-# C: from Roxanne | 2020_Pan et al: 0.9
-# TANK: 2023_Wang et al
-# FC: 2021_cigolotti Comprehensive Review on FC Technology for Stationary Applications: Electric Efficiency PEMFC: [38,38,37,40] in [%]
+"""
+PV: from Roxanne
+ELY: 2023_van_der_roest (74-79%)
+C: from Roxanne | 2020_Pan et al: 0.9
+TANK: 2023_Wang et al
+FC: 2021_cigolotti Comprehensive Review on FC Technology for Stationary Applications: Electric Efficiency PEMFC: [38,38,37,40] in [%]
+"""
 
 eta = {'PV': 0.21,'ELY': 0.74,'C': 0.7526,'TANK': 0.95,'FC': 0.5,}              # Realistic
 #eta = {'PV': 0.21,'ELY': 0.87,'C': 0.8763,'TANK': 0.975,'FC': 0.75}
@@ -118,18 +123,20 @@ eta = {'PV': 0.21,'ELY': 0.74,'C': 0.7526,'TANK': 0.95,'FC': 0.5,}              
 #------------------------------------------------------------------------------
 # Unit prices of components / capital costs in [€/W] 
 #------------------------------------------------------------------------------
-# PV:   in [€/W] | 2023_Tay Son Le: 881 USD/year | 2018_Gabrielli 300€/m2 
-# BAT:  Unit price of the battery in CHF/kWh
-# ELY:  in [€/W] | 2023_IEA-GlobalH2Review: PEM - 2kUSD/kW - reduction to 600 USD/kW
-# C:    in [€/W] | 2020_Pan et al: 1228 (¥/kW)
-# TANK: in [EUR/J], 1644 [EUR/kgH2] | 2018_Gabrielli: {20.7;13.6;10.9} in [€/kWh] | 2023_A Review on the Cost Analysis of H2 Gas Storage Tanks for FCV: 2020:9.34 €/kWh 2025: 8.40€/kWh Ultimate: 7.47€/kWh
-# FC:   in [€/W] (Wang et. al 2023 - 2kUSD/kW) | 2018_Gabrielli {2160;1680;1320} [€/kW]
-# HEX:  in [€/m2] from Roxanne: 77.79 €/m2 | From Christian: 1782CHF/5.2m2 = 342.69 CHF/m2
-Fixed_HEX = 5291.9 # Fixed cost for heat exchanger [EUR]
+"""
+PV:   in [€/W] | 2023_Tay Son Le: 881 USD/year | 2018_Gabrielli 300€/m2 
+BAT:  Unit price of the battery in CHF/kWh
+ELY:  in [€/W] | 2023_IEA-GlobalH2Review: PEM - 2kUSD/kW - reduction to 600 USD/kW
+C:    in [€/W] | 2020_Pan et al: 1228 (¥/kW)
+TANK: in [EUR/J], 1644 [EUR/kgH2] | 2018_Gabrielli: {20.7;13.6;10.9} in [€/kWh] | 2023_A Review on the Cost Analysis of H2 Gas Storage Tanks for FCV: 2020:9.34 €/kWh 2025: 8.40€/kWh Ultimate: 7.47€/kWh
+FC:   in [€/W] (Wang et. al 2023 - 2kUSD/kW) | 2018_Gabrielli {2160;1680;1320} [€/kW]
+HEX:  in [€/m2] from Roxanne: 77.79 €/m2 + Fixed_HEX = 5291.9 (Fixed cost for heat exchanger [EUR]) | From Christian: 1782CHF/5.2m2 = 342.69 CHF/m2
+"""
 
-# UP = {'PV': 0.8,'BAT': 500,'ELY': 1.7,'C': 0.0076,'TANK': 9.34/(3.6*10**6),'FC': 2, 'HP': 0.576, 'HEX': 77.79}       # Realistic
-#UP = {'PV': 0.8,'BAT': 500,'ELY': 1.128,'C': 0.00506,'TANK': 8.4/(3.6*10**6),'FC': 1.3, 'HP': 0.238, 'HEX': 40}
-UP  = {'PV': 0.8, 'BAT': 500,'ELY': 0.556,'C': 0.0038,'TANK': 7.47/(3600000),'FC': 0.6, 'HP': 0, 'HEX': 0}         # Optimal
+
+# UP = {'PV': 0.8,'BAT': 500,'ELY': 1.7,  'C': 0.0076, 'TANK': 9.34/(3.6*10**6),'FC': 2,  'HP': 0.576, 'HEX': 342.69}  # Realistic
+# UP = {'PV': 0.8,'BAT': 500,'ELY': 1.128,'C': 0.00506,'TANK': 8.4/(3.6*10**6), 'FC': 1.3,'HP': 0.238, 'HEX': 221}     # Mid-Term
+UP  =  {'PV': 0.8,'BAT': 500,'ELY': 0.556,'C': 0.0038, 'TANK': 7.47/(3.6*10**6),'FC': 0.6,'HP': 0.200, 'HEX': 100}     # Optimal
 
 
 # UP = {'PV': 0.8,'ELY': 1.7/10,'C': 0.0076,'TANK': 1644/(10*HHV),'FC': 1.680/10} #Old values
@@ -168,7 +175,7 @@ bat_params = {
     'eff_ch': 0.95,         # Battery charging efficiency in [-]
     'eff_disch': 0.95,      # Battery discharging efficiency in [-] 
     'eff_sd': 0.99,         # Battery self-discharge efficiency in [-]
-    'C_b_max': 300*kWh2J,  # Max battery capacity in [J]
+    'C_b_max': 1000*kWh2J,  # Max battery capacity in [J]
     'C_b_min': 0,           # Min battery capacity in [J] - typically set to 0
     'SOC_max': 0.8,         # Max state of charge of the battery to increase lifetime
     'SOC_min': 0.2          # Min state of charge of the battery to increase lifetime
@@ -179,7 +186,7 @@ bat_params = {
 #------------------------------------------------------------------------------
 
 # Area_PV_max  = P_peak_max / (eta['PV'] * np.mean(irradiance)) # Maximum PV area [m2]
-Area_PV_max  = 3500 # Maximum PV area [m2] => how to set, quantify the maximum pv area?
+Area_PV_max  = 5000 # Maximum PV area [m2] => how to set, quantify the maximum pv area?
 
 # Electrolyser max and min nominal power (W)   
 S_ELY_max = 1000*1000   # Maximal Electrolyzer size in [W]
@@ -222,7 +229,7 @@ T_MT_in   = 26        # MT DHN water inlet temperature HEX [°C] from NEST
 T_MT_out  = 36        # MT DHN water outlet temperature HEX [°C] from NEST
 T_HT_out  = 66        # HT DHN water outlet temperature HP [°C] from NEST (domestic hot water)
 T_log     = ((T_out - T_MT_out) - (T_in - T_MT_in)) / np.log((T_out - T_MT_out) / (T_in - T_MT_in)) # Logarithmic mean temp difference in HEX
-U_HEX     = 2         # Overall heat transfer coeff HEX [kW/m2/K], swedish thesis
+U_HEX     = 2000         # Overall heat transfer coeff HEX [W/m2*K], swedish thesis
 
 S_HEX_ELY_max = P_th_ELY_max / (U_HEX * T_log)  # Maximum heat exchanger surface [m2]
 S_HEX_FC_max  = P_th_FC_max / (U_HEX * T_log)   # Maximum heat exchanger surface [m2]
@@ -367,7 +374,7 @@ for t in range(nHours):
     m.addConstr((P_FC[t]   <= S_FC ),  name= "upper_Size_Constraint_FC")
     
 
-m.addConstr(gp.quicksum(P_imp) <= 1 * gp.quicksum(P_demand), name= "GridUse")
+m.addConstr(gp.quicksum(P_imp) <= GCF/100 * gp.quicksum(P_demand), name= "GridUse")
 
 # Initializing FC power
 m.addConstr(P_FC[0] <= E_TANK[0] / deltat, name= "InitialFC")                                    
@@ -600,7 +607,7 @@ def hydrogen_tank_volume(p_out, T_amb, E_TANK, HHV, R_H2, M_H2, nHours):
     for t in range(nHours):
         T_K = T_amb[t] + 273.15                 # Convert temperature from °C to Kelvin
         n   = (E_TANK[t] / HHV) / (M_H2/1000)   # Calculate the amount of hydrogen in mol
-        if p_out < 13:
+        if p_out < 500: #!!!!!!!!! CHANGE TO 13 bar which is the normal value!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             Z = 1  # Use Z = 1 for p_out < 13 bar
         else:
             # Calculate Z for p_out >= 13 without creating a list
