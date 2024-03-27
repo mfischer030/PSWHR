@@ -36,13 +36,13 @@ input_path, demand_path, heat_path, function_path, export_path = paths_configura
 # Setting up the model
 #------------------------------------------------------------------------------
 # Choose energy tariff
-energy_tariff = "Green" # Choose from "Green","Blue","Grey"
+energy_tariff = "Blue" # Choose from "Green","Blue","Grey"
 
 # Flag to include/exclude battery in the optimization model
 include_battery = True
 
 # Choose the "grid-connectivity" of the model: Grid Connectivity Factor
-GCF = 100  # [%] of power which can be imported from the grid from the total energy demand
+GCF = 30  # [%] of power which can be imported from the grid from the total energy demand
 
 #------------------------------------------------------------------------------
 # Import data
@@ -79,8 +79,8 @@ cost_imp_el = df_input['price_Eur_MWh'].values # hourly cost to import
 cost_exp_el = df_input['Price_DayAhed'].values # hourly cost to export 
 
 # Revenues from WHR in [€/kWh]: Information on DHN Heat prices can be found here: https://www.preisueberwacher.admin.ch/pue/de/home/themen/infrastruktur/fernwaerme.html
-cost_export_heatMT = 0.15 #0.09 
-cost_export_heatHT = 0.22 #0.1189
+cost_export_heatMT = 0.09 #0.09 
+cost_export_heatHT = 0.1189 #0.1189
 
 # Time parameters
 nHours = len(df_input)                        # number of hours simulated
@@ -105,6 +105,17 @@ else:
 # Convert df_input['ts'] to a list named 'timeline'
 timeline = df_input['ts'].tolist()
 
+# these two coefficients are needed for the big-M constraints
+# Tipically, the M value is selected as a large value, but too large values must be avoided to avoid numerical instabilities
+# the selection of the M values depend on the problem you are tackling
+M_hours     = 2*max(P_demand)    # used for the big-M constraint on the grid_usage
+M_threshold = nHours             # used for the big-M for the threshold
+
+# Threshold for low/high grid usage in [h]
+threshold_hours = {'year': 3500,'month': 3500/12,'week': 3500/52}
+# Small value to avoid numerical issues
+epsilon       = 1e-4  
+
 #------------------------------------------------------------------------------
 # Efficiencies of components in [-]
 #------------------------------------------------------------------------------
@@ -116,7 +127,7 @@ TANK: 2023_Wang et al
 FC: 2021_cigolotti Comprehensive Review on FC Technology for Stationary Applications: Electric Efficiency PEMFC: [38,38,37,40] in [%]
 """
 
-eta = {'PV': 0.21,'ELY': 0.74,'C': 0.7526,'TANK': 0.95,'FC': 0.5,}              # Realistic
+eta = {'PV': 0.21,'ELY': 0.6,'C': 0.7526,'TANK': 0.95,'FC': 0.5,}              # Realistic
 #eta = {'PV': 0.21,'ELY': 0.87,'C': 0.8763,'TANK': 0.975,'FC': 0.75}
 #eta = {'PV': 0.21,'ELY': 1,'C': 1,'TANK': 1,'FC': 1}                           # Optimal      
 
@@ -134,9 +145,9 @@ HEX:  in [€/m2] from Roxanne: 77.79 €/m2 + Fixed_HEX = 5291.9 (Fixed cost fo
 """
 
 
-# UP = {'PV': 0.8,'BAT': 500,'ELY': 1.7,  'C': 0.0076, 'TANK': 9.34/(3.6*10**6),'FC': 2,  'HP': 0.576, 'HEX': 342.69}  # Realistic
-# UP = {'PV': 0.8,'BAT': 500,'ELY': 1.128,'C': 0.00506,'TANK': 8.4/(3.6*10**6), 'FC': 1.3,'HP': 0.238, 'HEX': 221}     # Mid-Term
-UP  =  {'PV': 0.8,'BAT': 500,'ELY': 0.556,'C': 0.0038, 'TANK': 7.47/(3.6*10**6),'FC': 0.6,'HP': 0.200, 'HEX': 100}     # Optimal
+# UP = {'PV': 0.8,'BAT': 0.5,'ELY': 1.7,  'C': 0.0076, 'TANK': 9.34/(3.6*10**6),'FC': 2,  'HP': 0.576, 'HEX': 342.69}  # Realistic
+# UP = {'PV': 0.8,'BAT': 0.5,'ELY': 1.128,'C': 0.00506,'TANK': 8.4/(3.6*10**6), 'FC': 1.3,'HP': 0.238, 'HEX': 221}     # Mid-Term
+UP  =  {'PV': 0.8,'BAT': 0.5/3600,'ELY': 0.556,'C': 0.0038, 'TANK': 7.47/(3.6*10**6),'FC': 0.6,'HP': 0.200, 'HEX': 100}     # Optimal
 
 
 # UP = {'PV': 0.8,'ELY': 1.7/10,'C': 0.0076,'TANK': 1644/(10*HHV),'FC': 1.680/10} #Old values
@@ -229,7 +240,7 @@ T_MT_in   = 26        # MT DHN water inlet temperature HEX [°C] from NEST
 T_MT_out  = 36        # MT DHN water outlet temperature HEX [°C] from NEST
 T_HT_out  = 66        # HT DHN water outlet temperature HP [°C] from NEST (domestic hot water)
 T_log     = ((T_out - T_MT_out) - (T_in - T_MT_in)) / np.log((T_out - T_MT_out) / (T_in - T_MT_in)) # Logarithmic mean temp difference in HEX
-U_HEX     = 2000         # Overall heat transfer coeff HEX [W/m2*K], swedish thesis
+U_HEX     = 2000      # Overall heat transfer coeff HEX [W/m2*K], swedish thesis
 
 S_HEX_ELY_max = P_th_ELY_max / (U_HEX * T_log)  # Maximum heat exchanger surface [m2]
 S_HEX_FC_max  = P_th_FC_max / (U_HEX * T_log)   # Maximum heat exchanger surface [m2]
@@ -291,6 +302,9 @@ if include_battery:
     E_b     = m.addVars(nHours,lb=0, ub=bat_params['C_b_max'], name="E_b")              # Energy in the battery at each time step
     C_b     = m.addVar(lb=bat_params['C_b_min'], ub=bat_params['C_b_max'], name="C_b")       # Battery Capacity
 
+grid_usage = m.addVars(nHours, vtype=GRB.BINARY, name="grid_usage")  # Binary variable for grid usage indicator, 1 if used, i.e. P_imp>0, 0 otherwise
+h_usage    = m.addVar(lb=0, ub=nHours, name="h_usage")               # Total hours of grid usage
+high_usage = m.addVar(vtype=GRB.BINARY, name="high_usage")           # Binary variable indicating whether grid usage is above the threshold, 1 if above, 0 if below
 #------------------------------------------------------------------------------
 # Additional calculations
 #------------------------------------------------------------------------------
@@ -407,7 +421,7 @@ if include_battery:
     
         # SOC constraints
         m.addConstr(E_b[t] <= bat_params['SOC_max'] * C_b)
-        m.addConstr(E_b[t] >= bat_params['SOC_min'] * C_b)
+        # m.addConstr(E_b[t] >= bat_params['SOC_min'] * C_b)
     
     # Periodicity = Ensuring energy in the battery at the end matches the start
     m.addConstr(E_b[0] == E_b[nHours-1], name='Periodicity_Battery')
@@ -456,6 +470,19 @@ for t in range(nHours):
 # Combined heat exchanger and heat pump constraint
 # m.addConstr(P_th_T + P_th_HT <= eff_th * (P_ELY - (1 - eta['ELY']) * P_ELY), "HEX_HP")
 
+# here we add the constraints needed for the grid usage tarif selection
+m.addConstr(h_usage == gp.quicksum(grid_usage[i] for i in range(nHours))) # not sure this has to be a constraint, could be a normal calculation maybe 
+
+# we use the big-M approach to define the binary variable grid_usage
+for i in range(nHours):
+    m.addConstr(P_imp[i] <= M_hours * grid_usage[i])                 # here we constraint grid_usage to take value 1 if P_imp is larger than zero. If P_imp is positive, this constraint is satisfied only if grid_usage is 1
+    m.addConstr(P_imp[i] >= epsilon - M_hours * (1 - grid_usage[i])) # here we constraint grid_usage to 0 if P_imp is zero. 
+# Here I choose M_hours in the order of the peak demand
+
+# defining the value of the binary variable high-usage based on the hours of operation, h_usage
+m.addConstr(h_usage - threshold_hours[timeline_choice] <= M_threshold * high_usage)# if h_usage is larger than threshold, the inequality is respected only if high_usage takes value 1. 
+# here I choose the M_threshold in the order of the hours in the year
+
 #------------------------------------------------------------------------------
 # Run cost function
 #------------------------------------------------------------------------------
@@ -475,6 +502,7 @@ cost_maint, cost_WHR] = totalAnnualCost(
                         UP, maintenance, life, 
                         P_imp, P_max_imp, P_exp, P_th_MT, P_th_HT,
                         cost_imp_el, cost_exp_el, cost_export_heatMT, cost_export_heatHT,
+                        m, high_usage,
                         df_input, nHours, timeline_choice
                         )
 
@@ -538,12 +566,14 @@ P_C     = [P_C[t].getValue()     for t in range(nHours)]
 mdot_H2 = [mdot_H2[t].getValue() for t in range(nHours)]
 
 # For Gurobi var object
-Area_PV   = Area_PV.X
-S_ELY     = S_ELY.X
-S_TANK    = S_TANK.X
-S_FC      = S_FC.X
-S_HEX     = S_HEX.X
-S_HP      = S_HP.X
+Area_PV    = Area_PV.X
+S_ELY      = S_ELY.X
+S_TANK     = S_TANK.X
+S_FC       = S_FC.X
+S_HEX      = S_HEX.X
+S_HP       = S_HP.X
+high_usage = high_usage.X
+h_usage    = h_usage.X
 
 # For Gurobi LinExpr
 cost            = cost.getValue()
@@ -584,6 +614,7 @@ if include_battery:
     C_b_kWh = C_b * J2kWh 
 
 # Function to calculate the volume of hydrogen gas based on temperature and pressure
+# Important notice: the coefficients A-E from the paper might not be the right ones this study.
 def hydrogen_tank_volume(p_out, T_amb, E_TANK, HHV, R_H2, M_H2, nHours):
     """
     Calculate the volume of hydrogen gas based on the ideal gas law, considering the compressibility factor.
@@ -634,7 +665,7 @@ else:
     print("H2 generation")
 
 LCOE = (cost) / (sum(P_imp + P_PV)/10**6)  # Calculate LCOE # Look into the literature how
-
+VALCOE = cost / (sum(P_demand)/10**6)
 #------------------------------------------------------------------------------
 # Display results
 #------------------------------------------------------------------------------

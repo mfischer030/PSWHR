@@ -37,15 +37,15 @@ threshold_hours = 3500  # Threshold for low/high grid usage in hours
 # these two coefficients are needed for the big-M constraints
 # Tipically, the M value is selected as a large value, but too large values must be avoided to avoid numerical instabilities
 # the selection of the M values depend on the problem you are tackling
-M_hours     = 5*P_dem_peak    # used for the big-M constraint on the grid_usage
+M_hours     = 2*P_dem_peak    # used for the big-M constraint on the grid_usage
 M_threshold = hours_in_year   # used for the big-M for the threshold
 
 # reduced test - I reduce vector length to visualize better results and have faster tests
-# factor = 1                          # set factor to 1 to run the 1-year test
-# factor = 8760//(24*30*3)            # factor to reduce analysis to 1 quarter
-# factor = 8760//(24*30)              # factor to reduce analysis to 1 month
-# factor = 8760//(24*7)               # factor to reduce analysis to 1 week
-factor = 8760//(24)                   # factor to reduce analysis to 1 day
+# factor = 1                            # set factor to 1 to run the 1-year test
+# factor = 8760//(24*30*3)              # factor to reduce analysis to 1 quarter
+factor = 8760//(24*30)                  # factor to reduce analysis to 1 month
+# factor = 8760//(24*7)                 # factor to reduce analysis to 1 week
+# factor = 8760//(24)                   # factor to reduce analysis to 1 day
 
 hours_in_year   = hours_in_year // factor
 threshold_hours = threshold_hours // factor
@@ -66,6 +66,7 @@ P_ch    = model.addVars(hours_in_year, name="P_ch")                            #
 P_disch = model.addVars(hours_in_year, name="P_disch")                         # Power discharged from the battery
 E_b     = model.addVars(hours_in_year + 1, lb=0, ub=C_b_max, name="E_b")       # Energy in the battery at each time step
 C_b     = model.addVar(lb=0, ub=C_b_max, name="C_b")                           # Battery Capacity
+
 grid_usage = model.addVars(hours_in_year, vtype=GRB.BINARY, name="grid_usage") # Binary variable for grid usage indicator, 1 if used, i.e. P_imp>0, 0 otherwise
 h_usage    = model.addVar(lb=0, ub=hours_in_year, name="h_usage")              # Total hours of grid usage
 high_usage = model.addVar(vtype=GRB.BINARY, name="high_usage")                 # Binary variable indicating whether grid usage is above the threshold, 1 if above, 0 if below
@@ -89,6 +90,9 @@ model.addConstrs(P_disch[i] / eff_b_disch + P_imp[i] >= E_dem[i] + P_ch[i]  for 
 
 # Periodicity 
 model.addConstr(E_b[hours_in_year] == E_b[0]) 
+
+
+
 
 # here we add the constraints needed for the grid usage tarif selection
 model.addConstr(h_usage == gp.quicksum(grid_usage[i] for i in range(hours_in_year))) # not sure this has to be a constraint, could be a normal calculation maybe 

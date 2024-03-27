@@ -12,6 +12,7 @@ def totalAnnualCost(system_sizes, energy_tariff,
                     UP, maintenance, life, 
                     P_imp, P_max_imp, P_exp, P_th_LT, P_th_HT,
                     cost_imp_el, cost_exp_el, cost_export_heatLT, cost_export_heatHT,
+                    m, high_usage,
                     df_input, nHours, timeline_choice):
     
     # Capital recovery factor
@@ -25,7 +26,7 @@ def totalAnnualCost(system_sizes, energy_tariff,
     cost_maint = sum(size * UP[component] * maintenance[component] for component, size in system_sizes.items())
     
     # Operation costs in [€/y]-------------------------------------------------
-    def electricity_prices(energy_tariff, P_imp, P_max_imp, P_exp, df_input, timeline_choice, vat_included=False):
+    def electricity_prices(energy_tariff, P_imp, P_max_imp, P_exp, m, high_usage, df_input, timeline_choice, vat_included=True):
         
         # Calculate the mean operating time (mittlere Benutzungsdauer)
         if timeline_choice == 'week':
@@ -34,20 +35,6 @@ def totalAnnualCost(system_sizes, energy_tariff,
             multiplier = 12                               # 12 months in a year
         else:
             multiplier = 1                                # Default to yearly calculation with no multiplication needed
-        
-        # # Calculate the mean of the monthly maximum values
-        # mean_monthly_max = 0 
-        # for month in P_max_imp: 
-        #     mean_monthly_max += P_max_imp[month] / len(P_max_imp)
-        
-        # print(mean_monthly_max)
-        # avr_operating_time = P_imp.sum() / mean_monthly_max
-        
-        avr_operating_time = 3600
-        
-        # print(f"The monthly maximum values is: {sum(P_imp)}")
-        # print(f"The mean of the monthly maximum values is: {mean_monthly_max}")
-        # print(f"The average operating time is: {avr_operating_time}")
         
         # Base fees in CHF for choosen timeline (week,month,year)
         base_fee_incl_vat = (42.16 + 616.17) / multiplier
@@ -60,13 +47,13 @@ def totalAnnualCost(system_sizes, energy_tariff,
             "Grey":  {"peak_excl_vat": 11.42, "peak_incl_vat": 12.35, "off_peak_excl_vat": 8.62, "off_peak_incl_vat": 9.32},
         }
         
-        if avr_operating_time > 3500: 
+        if m.addConstr(high_usage >= 1, "BD>3500"): 
             grid_usage_perkWh = {
                 "Leistungstarif": {"excl_vat": 15.99, "incl_vat": 17.29},
                 "Hochtarif":   {"excl_vat": 4.03, "incl_vat": 4.36},
                 "Niedertarif": {"excl_vat": 2.01, "incl_vat": 2.17},
                 }
-        else:
+        elif m.addConstr(high_usage < 1, "BD<3500"):
             grid_usage_perkWh = { 
                 "Leistungstarif": {"excl_vat": 7.55, "incl_vat": 8.16},
                 "Hochtarif":   {"excl_vat": 7.47, "incl_vat": 8.08},
@@ -141,7 +128,7 @@ def totalAnnualCost(system_sizes, energy_tariff,
 
         return cost_elec, cost_elec_imp, cost_elec_exp, cost_grid_usage
     
-    cost_elec, cost_elec_imp, cost_elec_exp, cost_grid_usage = electricity_prices(energy_tariff, P_imp, P_max_imp, P_exp, df_input, timeline_choice, vat_included=False)
+    cost_elec, cost_elec_imp, cost_elec_exp, cost_grid_usage = electricity_prices(energy_tariff, P_imp, P_max_imp, P_exp, m, high_usage, df_input, timeline_choice, vat_included=True)
     
     cost_WHR = sum((P_th_LT[t]/1000 * cost_export_heatLT + P_th_HT[t]/1000 * cost_export_heatHT) for t in range(nHours))
     
