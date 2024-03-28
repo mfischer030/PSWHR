@@ -33,7 +33,7 @@ import os
 import threading
 import webbrowser
 
-# Assuming you've already set the working directory and imported necessary modules
+# Path to pv_sizingprob_WHR
 path = r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\PSWHR\PSWHR\PSWHR'
 os.chdir(path)
 # from pv_sizingprob_WHR import *
