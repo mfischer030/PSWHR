@@ -6,14 +6,14 @@ Dashboard to visualize the results from pv_sizingprob_WHR.
 
 You need to install plotly and dash before running the code:
 
-1. plotly may be installed using pip:
+1. plotly may be installed using pip: https://plotly.com/python/getting-started/
     $ pip install plotly==5.20.0
     or conda:
     $ conda install -c plotly plotly=5.20.0
 
 This package contains everything you need to write figures to standalone HTML files.
 
-2. In your terminal, install dash:
+2. In your terminal, install dash: https://dash.plotly.com/installation
     $ pip install dash
     or conda:
     $ conda install conda-forge::dash
