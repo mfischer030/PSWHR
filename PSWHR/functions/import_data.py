@@ -38,9 +38,14 @@ class WeeklyTimeline:
         self.P_demand = (self.P_demand * 1000)  # Power demand in [W]
         
         self.index = range(len(self.irradiance))
+        
+        # Add logic to import heating demand data
+        heat_sheet_name = 'heat_week_sum' if self.season == 'summer' else 'heat_week_win'
+        df_heat_demand = pd.read_excel(self.demand_path, sheet_name=heat_sheet_name)
+        
+        return self.irradiance, self.P_demand, self.T_amb, df_input, df_demand, df_heat_demand
     
         
-        return self.irradiance, self.P_demand, self.T_amb, df_input, df_demand
 
 class MonthlyTimeline:
     def __init__(self, input_path, demand_path, season):
@@ -64,8 +69,10 @@ class MonthlyTimeline:
         
         self.index = range(len(self.irradiance))
     
+        heat_sheet_name = 'heat_month_sum' if self.season == 'summer' else 'heat_month_win'
+        df_heat_demand = pd.read_excel(self.demand_path, sheet_name=heat_sheet_name)
         
-        return self.irradiance, self.P_demand, self.T_amb, df_input, df_demand
+        return self.irradiance, self.P_demand, self.T_amb, df_input, df_demand, df_heat_demand
 
 
 class YearlyTimeline:
@@ -91,7 +98,9 @@ class YearlyTimeline:
         # Create an index based on the length of the data
         self.index = range(len(self.irradiance))
 
-        return self.irradiance, self.P_demand, self.T_amb, df_input, df_demand
+        df_heat_demand = pd.read_excel(self.demand_path, sheet_name='heat_year')
+        
+        return self.irradiance, self.P_demand, self.T_amb, df_input, df_demand, df_heat_demand
 
 # DON'T DELETE THIS ALTERNATIVE PLOT!!!!---------------------------------------
 # def plot_data(timeline, title_prefix):
@@ -169,12 +178,12 @@ def get_data(input_path, demand_path):
         
         if timeline_choice.lower() == 'week':
             weekly_timeline = WeeklyTimeline(input_path, demand_path, season_choice)
-            irradiance, P_demand, T_amb, df_input, df_demand = weekly_timeline.import_data()
+            irradiance, P_demand, T_amb, df_input, df_demand, df_heat_demand = weekly_timeline.import_data()
             plot_data(weekly_timeline, f'{season_choice.capitalize()} Week 2019')
             
         elif timeline_choice.lower() == 'month':
             monthly_timeline = MonthlyTimeline(input_path, demand_path, season_choice)
-            irradiance, P_demand, T_amb, df_input, df_demand = monthly_timeline.import_data()
+            irradiance, P_demand, T_amb, df_input, df_demand, df_heat_demand = monthly_timeline.import_data()
             plot_data(monthly_timeline, f'{season_choice.capitalize()} Month 2019')
         
     elif timeline_choice.lower() == 'year':
@@ -185,13 +194,13 @@ def get_data(input_path, demand_path):
             year_choice = input("Enter the year you want to consider (2019, 2020, 2021, 2022): ")
             
         yearly_timeline = YearlyTimeline(input_path, demand_path, year_choice)
-        irradiance, P_demand, T_amb, df_input, df_demand = yearly_timeline.import_data()
+        irradiance, P_demand, T_amb, df_input, df_demand, df_heat_demand = yearly_timeline.import_data()
         plot_data(yearly_timeline, f'{year_choice}')
         
     else:
         print("Invalid timeline choice. Please enter 'week', 'year', or 'month'.")
     
-    return irradiance, P_demand, T_amb, df_input, df_demand, timeline_choice, season_choice
+    return irradiance, P_demand, T_amb, df_input, df_demand, df_heat_demand, timeline_choice, season_choice
 
     
 

@@ -36,13 +36,18 @@ input_path, demand_path, heat_path, function_path, export_path = paths_configura
 # Setting up the model
 #------------------------------------------------------------------------------
 # Choose energy tariff
-energy_tariff = "Blue" # Choose from "Green","Blue","Grey"
+energy_tariff = "Grey" # Choose from "Green","Blue","Grey"
 
 # Flag to include/exclude battery in the optimization model
-include_battery = True
+include_battery = False
 
 # Choose the "grid-connectivity" of the model: Grid Connectivity Factor
 GCF = 30  # [%] of power which can be imported from the grid from the total energy demand
+
+# Capital recovery factor CRF
+project_lifetime     = 20       # [years] 2023_Giovanniello 
+annual_interest_rate = 0.07     # [-] 2023_Giovanniello
+CRF = (annual_interest_rate * (1 + annual_interest_rate)**project_lifetime) / ((1 + annual_interest_rate)**project_lifetime - 1)
 
 #------------------------------------------------------------------------------
 # Import data
@@ -52,16 +57,44 @@ sys.path.append(function_path)
 
 # Import data and generate variables using the get_data function---------------
 from import_data import get_data
-irradiance, P_demand, T_amb, df_input, df_demand, timeline_choice, season_choice = get_data(input_path, demand_path)
+irradiance, P_demand, T_amb, df_input, df_demand, df_heat_demand, timeline_choice, season_choice = get_data(input_path, demand_path)
 
-# Heat demand data (from NEST building @ empa, year 2022)----------------------
-df_demand_heat = pd.read_excel(heat_path)
 
-heat_35degC_demand = df_demand_heat['Heating_35degC_kW'].values  
-heat_65degC_demand = df_demand_heat['DHW_65degC_kW'].values     
 
-from plotting_module import heat_demand_plot
-heat_demand_plot(heat_35degC_demand,heat_65degC_demand)
+# Convert Wh to kWh by dividing by 1000
+heat_zone1_35degC_demand_kWh = df_heat_demand['Heating_Zone1_35degC_W'].values / 1000
+heat_zone1_60degC_demand_kWh = df_heat_demand['Heating_Zone1_60degC_W'].values / 1000
+heat_zone2_35degC_demand_kWh = df_heat_demand['Heating_Zone2_35degC_W'].values / 1000
+heat_zone2_60degC_demand_kWh = df_heat_demand['Heating_Zone2_60degC_W'].values / 1000
+heat_zone3_35degC_demand_kWh = df_heat_demand['Heating_Zone3_35degC_W'].values / 1000
+heat_zone3_60degC_demand_kWh = df_heat_demand['Heating_Zone3_60degC_W'].values / 1000
+
+# # Create a figure and axis for the plot
+# fig, ax = plt.subplots(figsize=(10, 6))
+
+# # Plot each series of data with a label
+# ax.plot(heat_zone1_35degC_demand_kWh, label='Zone 1, 35°C')
+# ax.plot(heat_zone1_60degC_demand_kWh, label='Zone 1, 60°C')
+# ax.plot(heat_zone2_35degC_demand_kWh, label='Zone 2, 35°C')
+# ax.plot(heat_zone2_60degC_demand_kWh, label='Zone 2, 60°C')
+# ax.plot(heat_zone3_35degC_demand_kWh, label='Zone 3, 35°C')
+# ax.plot(heat_zone3_60degC_demand_kWh, label='Zone 3, 60°C')
+
+# # Add some plot decorations
+# ax.set_xlabel('Time')  # Assuming the index represents time
+# ax.set_ylabel('Demand (kWh)')
+# ax.set_title('Heating Demand by Zone and Temperature')
+# ax.legend()
+
+# # Show the plot
+# plt.show()
+
+# # Heat demand data (from NEST building @ empa, year 2022)----------------------
+# df_demand_heat = pd.read_excel(heat_path)
+# Old plot used for NEST heat demand
+# from plotting_module import heat_demand_plot
+# heat_demand_plot(heat_35degC_demand,heat_65degC_demand)
+
 #------------------------------------------------------------------------------
 # Input parameters
 #------------------------------------------------------------------------------
@@ -79,8 +112,8 @@ cost_imp_el = df_input['price_Eur_MWh'].values # hourly cost to import
 cost_exp_el = df_input['Price_DayAhed'].values # hourly cost to export 
 
 # Revenues from WHR in [€/kWh]: Information on DHN Heat prices can be found here: https://www.preisueberwacher.admin.ch/pue/de/home/themen/infrastruktur/fernwaerme.html
-cost_export_heatMT = 0.09 #0.09 
-cost_export_heatHT = 0.1189 #0.1189
+cost_export_heatMT = 0.09   # 0.09
+cost_export_heatHT = 0.1189 # 0.1189
 
 # Time parameters
 nHours = len(df_input)                        # number of hours simulated
@@ -128,15 +161,15 @@ FC: 2021_cigolotti Comprehensive Review on FC Technology for Stationary Applicat
 """
 
 eta = {'PV': 0.21,'ELY': 0.6,'C': 0.7526,'TANK': 0.95,'FC': 0.5,}              # Realistic
-#eta = {'PV': 0.21,'ELY': 0.87,'C': 0.8763,'TANK': 0.975,'FC': 0.75}
-#eta = {'PV': 0.21,'ELY': 1,'C': 1,'TANK': 1,'FC': 1}                           # Optimal      
+#eta = {'PV': 0.21,'ELY': 0.8,'C': 0.8763,'TANK': 0.975,'FC': 0.75}
+#eta = {'PV': 0.21,'ELY': 1,'C': 1,'TANK': 1,'FC': 1}                          # Optimal      
 
 #------------------------------------------------------------------------------
 # Unit prices of components / capital costs in [€/W] 
 #------------------------------------------------------------------------------
 """
 PV:   in [€/W] | 2023_Tay Son Le: 881 USD/year | 2018_Gabrielli 300€/m2 
-BAT:  Unit price of the battery in CHF/kWh
+BAT:  in [€/kWh]
 ELY:  in [€/W] | 2023_IEA-GlobalH2Review: PEM - 2kUSD/kW - reduction to 600 USD/kW
 C:    in [€/W] | 2020_Pan et al: 1228 (¥/kW)
 TANK: in [EUR/J], 1644 [EUR/kgH2] | 2018_Gabrielli: {20.7;13.6;10.9} in [€/kWh] | 2023_A Review on the Cost Analysis of H2 Gas Storage Tanks for FCV: 2020:9.34 €/kWh 2025: 8.40€/kWh Ultimate: 7.47€/kWh
@@ -145,12 +178,10 @@ HEX:  in [€/m2] from Roxanne: 77.79 €/m2 + Fixed_HEX = 5291.9 (Fixed cost fo
 """
 
 
-# UP = {'PV': 0.8,'BAT': 0.5,'ELY': 1.7,  'C': 0.0076, 'TANK': 9.34/(3.6*10**6),'FC': 2,  'HP': 0.576, 'HEX': 342.69}  # Realistic
-# UP = {'PV': 0.8,'BAT': 0.5,'ELY': 1.128,'C': 0.00506,'TANK': 8.4/(3.6*10**6), 'FC': 1.3,'HP': 0.238, 'HEX': 221}     # Mid-Term
-UP  =  {'PV': 0.8,'BAT': 0.5/3600,'ELY': 0.556,'C': 0.0038, 'TANK': 7.47/(3.6*10**6),'FC': 0.6,'HP': 0.200, 'HEX': 100}     # Optimal
+UP = {'PV': 0.8,'BAT': 0.5/3600,'ELY': 1.7,'C': 0.0076, 'TANK': 9.34/(3.6*10**6),'FC': 2,  'HP': 0.576, 'HEX': 342.69}      # Realistic
+# UP = {'PV': 0.8,'BAT': 0.5/3600,'ELY': 1.128,'C': 0.00506,'TANK': 8.4/(3.6*10**6), 'FC': 1.3,'HP': 0.238, 'HEX': 221}     # Mid-Term
+# UP  =  {'PV': 0.8,'BAT': 0.5/3600,'ELY': 0.556,'C': 0.0038, 'TANK': 7.47/(3.6*10**6),'FC': 0.6,'HP': 0.200, 'HEX': 100}   # Optimal
 
-
-# UP = {'PV': 0.8,'ELY': 1.7/10,'C': 0.0076,'TANK': 1644/(10*HHV),'FC': 1.680/10} #Old values
 
 # Annual maintenance cost as fraction of total cost => from Roxanne------------
 maintenance = {
@@ -175,7 +206,7 @@ life = {'PV': 25,    # Roxanne: 30 | 2023_Tya Son Le: 25 years
         'HEX': 20    # from Roxanne
 }
 
-# Daily energy demand in [Wh] - P_demand is in [W]
+# Daily energy demand in [Wh/day] - P_demand is in [W]
 E_demand_day = sum(P_demand)/days # Gabriele: this is [Wh], correct, Maxime: yes
 
 # Maximal daily power demand in [W]
@@ -337,22 +368,15 @@ eta_cell = pv_efficiency(irradiance, T_amb)
 # Generate dataframe for plot
 df_pv = pd.DataFrame({'irradiance': irradiance,'T_amb': T_amb,'eta_cell': eta_cell})
 
-# # Plot
-# plt.figure()
-# pc = plt.scatter(df_pv['irradiance'], df_pv['eta_cell'], c=df_pv['T_amb'], cmap='jet')
-# plt.colorbar(label='Temperature [C]', ax=plt.gca()) # Adding a colorbar with a label
-# pc.set_alpha(0.25) # Setting the alpha for the scatter plot
-# plt.grid(alpha=0.5) # Adding grid to the plot with some transparency
-# plt.ylim(bottom=0.15)  # # Setting the lower limit for y-axis, adjusted for clarity
-# plt.xlabel('Irradiance [W/m²]')
-# plt.ylabel('Relative efficiency [-]')
-# plt.show()
+from plotting_module import pv_efficiency
+# pv_efficiency(df_pv)
 
 P_PV = [irradiance[t] * eta_cell[t] * Area_PV  for t in range(nHours)]          # Hourly PV power generation [W]
 # P_PV = [irradiance[t] * eta['PV'] * Area_PV  for t in range(nHours)]          # Hourly PV power generation [W]
     
 P_PV_peak = 1000 * max(eta_cell) * Area_PV  # Peak power for investment cost [W]
 S_PV = P_PV_peak
+
 # Gabriele: do you have a reference for the definition of P_PV_peak you adopted? I normally consider the peak power from Standard Test Conditions (STC), for 
 # which irradiance is fixed at 1000 W/m2. I think it is fairer, otherwise you have your peak power depending on sun availability, and given that your unit 
 # price is CHF/kW, it would not be fair to have an investiment cost depending on sun availability (how much units you install instead depends on the sun availability)
@@ -426,27 +450,6 @@ if include_battery:
     # Periodicity = Ensuring energy in the battery at the end matches the start
     m.addConstr(E_b[0] == E_b[nHours-1], name='Periodicity_Battery')
 
-# # Hanmin's battery model:
-# for t in range(nHours):
-#     # E_b update equation constraint (equation 11)
-#     if t < nHours - 1:  # No E_b[t+1] for the last hour
-#         model.addConstr(E_b[t+1] == A_ebat * E_b[t] + B_ebat[0] * P_disch[t] + B_ebat[1] * P_ch[t])
-
-#     # Charging power constraints (equation 12)
-#     model.addConstr(0 <= P_ch[t])
-#     model.addConstr(P_ch[t] <= P_ebat_max * z_ebat[t])
-
-#     # Discharging power constraints (equation 13)
-#     model.addConstr(-P_ebat_max * (1 - z_ebat[t]) <= P_disch[t])
-#     model.addConstr(P_disch[t] <= 0)
-
-#     # State of charge limits (equation 14)
-#     model.addConstr(SOC_min - epsilon_ebat[t] <= E_b[t])
-#     model.addConstr(E_b[t] <= SOC_max)
-
-#     # Slack variable constraint (equation 15)
-#     model.addConstr(epsilon_ebat[t] >= 0)
-
 # Waste Heat Recovery Constraints----------------------------------------------
 
 for t in range(nHours):
@@ -470,14 +473,15 @@ for t in range(nHours):
 # Combined heat exchanger and heat pump constraint
 # m.addConstr(P_th_T + P_th_HT <= eff_th * (P_ELY - (1 - eta['ELY']) * P_ELY), "HEX_HP")
 
-# here we add the constraints needed for the grid usage tarif selection
-m.addConstr(h_usage == gp.quicksum(grid_usage[i] for i in range(nHours))) # not sure this has to be a constraint, could be a normal calculation maybe 
-
+# BIG-M constraint for Benutzungsdauer = grid usage time-----------------------
 # we use the big-M approach to define the binary variable grid_usage
 for i in range(nHours):
     m.addConstr(P_imp[i] <= M_hours * grid_usage[i])                 # here we constraint grid_usage to take value 1 if P_imp is larger than zero. If P_imp is positive, this constraint is satisfied only if grid_usage is 1
     m.addConstr(P_imp[i] >= epsilon - M_hours * (1 - grid_usage[i])) # here we constraint grid_usage to 0 if P_imp is zero. 
 # Here I choose M_hours in the order of the peak demand
+
+# here we add the constraints needed for the grid usage tarif selection
+m.addConstr(h_usage == gp.quicksum(grid_usage[i] for i in range(nHours))) # not sure this has to be a constraint, could be a normal calculation maybe 
 
 # defining the value of the binary variable high-usage based on the hours of operation, h_usage
 m.addConstr(h_usage - threshold_hours[timeline_choice] <= M_threshold * high_usage)# if h_usage is larger than threshold, the inequality is respected only if high_usage takes value 1. 
@@ -491,13 +495,13 @@ if include_battery:
 else:
     S_BAT = 0
     
-system_sizes = {'PV': S_PV, 'BAT': S_BAT, 'ELY': S_ELY,'C': S_C,
+system_sizes = {'PV': S_PV,'BAT': S_BAT,'ELY': S_ELY,'C': S_C,
                 'TANK': S_TANK,'FC': S_FC,'HEX': S_HEX,'HP': S_HP}
 
 from cost import totalAnnualCost
 
 [cost_inst, cost_elec_imp, cost_elec_exp, cost_grid_usage, cost_elec, cost_op, 
-cost_maint, cost_WHR] = totalAnnualCost(
+cost_maint, cost_WHR, electricity_prices] = totalAnnualCost(
                         system_sizes, energy_tariff,
                         UP, maintenance, life, 
                         P_imp, P_max_imp, P_exp, P_th_MT, P_th_HT,
@@ -613,6 +617,16 @@ S_C_max = max(mdot_H2) * L_is_C / (eta["C"] * deltat)
 if include_battery:
     C_b_kWh = C_b * J2kWh 
 
+# Calculate the electricity price from BKW ------------------------------------
+energy_price = electricity_prices['Electricity prices [Rp./kWh]']
+grid_fee     = electricity_prices['Grid use cost [Rp./kWh]']
+export_price = electricity_prices['Elecricity export price [Rp.kWh]']
+
+# Import and Export prices in CHF/MWh
+electricity_price_imp = [(ip + gf) * 10 for ip, gf in zip(energy_price, grid_fee)]
+electricity_price_exp = [ep        * 10 for ep in export_price]
+#------------------------------------------------------------------------------
+
 # Function to calculate the volume of hydrogen gas based on temperature and pressure
 # Important notice: the coefficients A-E from the paper might not be the right ones this study.
 def hydrogen_tank_volume(p_out, T_amb, E_TANK, HHV, R_H2, M_H2, nHours):
@@ -673,17 +687,19 @@ VALCOE = cost / (sum(P_demand)/10**6)
 
 if include_battery:
     variable_names = [
-        'irradiance', 'P_demand', 'P_PV', 'P_imp', 'cost_imp_el',
-        'P_exp', 'cost_exp_el', 'P_ELY', 'mdot_H2', 'P_C', 'E_TANK',
+        'irradiance', 'P_demand', 'P_PV', 'P_imp', 'electricity_price_imp',
+        'P_exp', 'electricity_price_exp', 'P_ELY', 'mdot_H2', 'P_C', 'E_TANK',
         'P_FC', 'E_b', 'P_ch', 'P_ds', 'm_cw_ELY', 'm_cw_FC', 'm_cw_HT',
-        'm_cw_MT', 'P_th_HT', 'P_th_MT'
+        'm_cw_MT', 'P_th_HT', 'P_th_MT', 'heat_zone3_35degC_demand_kWh',
+        'heat_zone3_60degC_demand_kWh'
         ]
 else:
     variable_names = [
-        'irradiance', 'P_demand', 'P_PV', 'P_imp', 'cost_imp_el',
-        'P_exp', 'cost_exp_el', 'P_ELY', 'mdot_H2', 'P_C', 'E_TANK',
+        'irradiance', 'P_demand', 'P_PV', 'P_imp', 'electricity_price_imp',
+        'P_exp', 'electricity_price_exp', 'P_ELY', 'mdot_H2', 'P_C', 'E_TANK',
         'P_FC', 'm_cw_ELY', 'm_cw_FC', 'm_cw_HT',
-        'm_cw_MT', 'P_th_HT', 'P_th_MT'
+        'm_cw_MT', 'P_th_HT', 'P_th_MT', 'heat_zone3_35degC_demand_kWh',
+        'heat_zone3_60degC_demand_kWh'
         ]
 
 results = {name: [] for name in variable_names}
@@ -695,9 +711,9 @@ for t in range(nHours):
     results['P_demand'].append(P_demand[t])
     results['P_PV'].append(P_PV[t])
     results['P_imp'].append(P_imp[t])
-    results['cost_imp_el'].append(cost_imp_el[t])
+    results['electricity_price_imp'].append(electricity_price_imp[t])
     results['P_exp'].append(P_exp[t])
-    results['cost_exp_el'].append(cost_exp_el[t])
+    results['electricity_price_exp'].append(electricity_price_exp[t])
     
     #HESS
     results['P_ELY'].append(P_ELY[t])
@@ -719,6 +735,9 @@ for t in range(nHours):
     results['m_cw_MT'].append(m_cw_MT[t])
     results['P_th_HT'].append(P_th_HT[t])
     results['P_th_MT'].append(P_th_MT[t])
+    
+    results['heat_zone3_35degC_demand_kWh'].append(heat_zone3_35degC_demand_kWh[t])
+    results['heat_zone3_60degC_demand_kWh'].append(heat_zone3_60degC_demand_kWh[t])
 
 
 # Add optimization status to results
@@ -742,14 +761,14 @@ from plotting_module import plot_power_generation, plot_component_sizes, plot_HE
 # plot_power_generation(P_PV, P_imp, P_exp, df_input, nHours)
 plot_component_sizes(S_PV, S_PV_max, S_ELY, S_ELY_max, S_C, S_C_max, S_FC, S_FC_max, S_TANK, S_TANK_max)
 plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input)
-plot_costs_and_prices(all_costs, df_input)
+plot_costs_and_prices(all_costs, df_input, electricity_price_imp, electricity_price_exp)
 
 
 if include_battery:
     plot_battery_operation(P_demand, P_imp, P_ch, P_ds, E_b, bat_params, C_b_kWh, nHours)
 
 # For plotly graphs
-fig_power_generation = plot_power_generation(P_PV, P_imp, P_exp, df_input, nHours)
+fig_power_generation = plot_power_generation(results, df_input, nHours)
 fig_costs_pie_chart  = costs_pie_chart(all_costs)
 
 plot_WHR(results)

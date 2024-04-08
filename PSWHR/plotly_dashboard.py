@@ -58,6 +58,12 @@ app.layout = html.Div([
     ], className='row'),
     html.Div(id='page-content')
 ])
+# Layout for the Welcome page
+welcome_layout_layout = html.Div([
+    html.H1('Peak Shaving using Hydrogen Energy Storage System with Heat Coupling'),
+    html.P("The research focuses on the pivotal role of hydrogen in enhancing the flexibility of future energy systems, with a specific emphasis on Hydrogen Energy Storage Systems (HESS). The central concept involves the application of HESS at a charging station for battery electric vehicles (BEVs), utilizing both PV-panels and the grid as power sources. By leveraging HESS, the objective is to mitigate power peaks from BEVs and optimize recharging during low-demand periods. Additionally, the project explores the optimal integration of waste heat recovered from HESS to maximize its contribution to on-site heat demand."),
+    html.Img(src='240327 - sys_design/HESS(1).png', style={'width': '50%', 'height': 'auto'})
+])
 
 # Layout for the Demand page
 demand_layout = html.Div([
@@ -114,7 +120,7 @@ def display_page(pathname):
     elif pathname == '/costs':
         return  costs_layout
     else:
-        return '404'
+        return welcome_layout
 
 @app.callback(Output('power-generation-graph', 'figure'), [Input('url', 'pathname')])
 def update_graph(pathname):

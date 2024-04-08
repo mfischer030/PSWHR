@@ -65,23 +65,40 @@ def heat_demand_plot(heat_35degC_demand,heat_65degC_demand):
 #     ax.set_xlabel('Time [h]')  # Set the x-label here
 
 #     plt.show()
+
+def pv_efficiency(df_pv):
+    # Plot
+    plt.figure(figsize=[10,8])
+    pc = plt.scatter(df_pv['irradiance'], df_pv['eta_cell'], c=df_pv['T_amb'], cmap='jet')
+    plt.colorbar(label='Temperature [°C]', ax=plt.gca()) # Adding a colorbar with a label
+    pc.set_alpha(0.25) # Setting the alpha for the scatter plot
+    plt.grid(alpha=0.5) # Adding grid to the plot with some transparency
+    plt.ylim(bottom=0.16)  # # Setting the lower limit for y-axis, adjusted for clarity
+    plt.xlabel('Irradiance [W/m²]')
+    plt.ylabel('Relative efficiency [-]')
+    plt.tight_layout()
+    plt.show()
     
-def plot_power_generation(P_PV, P_imp, P_exp, df_input, nHours):
+def plot_power_generation(results, df_input, nHours):
+    df = pd.DataFrame(results)
     df_plot = pd.DataFrame({
         'Time': range(nHours),
-        'PV Generation [kW]': [p / 1000 for p in P_PV],
-        'Imported Power [kW]': [p / 1000 for p in P_imp],
-        'Exported Power [kW]': [-p / 1000 for p in P_exp]
+        'Power demand [kW]': [p / 1000 for p in df['P_demand']],
+        'PV Generation [kW]': [p / 1000 for p in df['P_PV']],
+        'Imported Power [kW]': [p / 1000 for p in df['P_imp']],
+        'Exported Power [kW]': [-p / 1000 for p in df['P_exp']]
     })
 
     # Melt the DataFrame to long format for easier plotting with Plotly Express
-    df_long = pd.melt(df_plot, id_vars=['Time'], value_vars=['PV Generation [kW]', 'Imported Power [kW]', 'Exported Power [kW]'],
+    df_long = pd.melt(df_plot, id_vars=['Time'], 
+                      value_vars=['Power demand [kW]', 'PV Generation [kW]', 'Imported Power [kW]', 'Exported Power [kW]'],
                       var_name='Type', value_name='Power')
 
     # Create the plot
     fig = px.line(df_long, x='Time', y='Power', color='Type',
                   labels={'Power': 'Power [kW]', 'Time': 'Time [h]'},
                   color_discrete_map={
+                      'Power demand [kW]': 'blue',  # Assign a color for Power Demand
                       'PV Generation [kW]': 'orange',
                       'Imported Power [kW]': 'magenta',
                       'Exported Power [kW]': 'green'
@@ -140,12 +157,12 @@ def plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TAN
     fuel cell (FC), and energy and TANK size over time.
 
     Parameters:
-    - P_PV: list, hourly PV power generation values
-    - P_ELY: list, hourly electrolyzer power values
-    - S_ELY: float, electrolyzer size
-    - P_FC: list, hourly fuel cell power values
-    - S_FC: float, fuel cell size
-    - E_TANK: list, hourly tank energy values
+    - P_PV: list, hourly PV power generation values in [W]
+    - P_ELY: list, hourly electrolyzer power values in [W]
+    - S_ELY: float, electrolyzer size in [W]
+    - P_FC: list, hourly fuel cell power values in [W]
+    - S_FC: float, fuel cell size in [W]
+    - E_TANK: list, hourly tank energy values in [J]
     - S_TANK: float, tank size
     - S_TANK_max: float, maximal tank size
     - df_input: DataFrame, input data
@@ -155,7 +172,8 @@ def plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TAN
 
     # Plot 1: Size and operation of the ELY
     ax1.plot(range(len(df_input)), [P_ELY[t] / 1000 for t in range(len(df_input))], label='ELY', color=palette[1])
-    ax1.plot(range(len(df_input)), [S_ELY / 1000] * len(df_input), label='ELY size', linestyle='--', color=palette[3])
+    ax1.plot(range(len(df_input)), [S_ELY / 1000] * len(df_input), 
+             label=f'ELY size: {S_ELY / 1000:.2f} kW', linestyle='--', color=palette[3])
     # ax1.set_xlabel('Time [h]')
     ax1.set_ylabel('Power [kW]', fontsize=24)
     # ax1.set_ylim([0, S_ELY_max * 1.1 / 1000])
@@ -166,7 +184,8 @@ def plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TAN
 
     # Plot 2: Size and operation of the FC
     ax2.plot(range(len(df_input)), [P_FC[t] / 1000 for t in range(len(df_input))], label='FC', color=palette[0])
-    ax2.plot(range(len(df_input)), [S_FC / 1000] * len(df_input), label='FC size', linestyle=':', color=palette[2])
+    ax2.plot(range(len(df_input)), [S_FC / 1000] * len(df_input), 
+             label=f'FC size: {S_FC/ 1000:.2f} kW', linestyle=':', color=palette[2])
     # ax2.set_xlabel('Time [h]')
     ax2.set_ylabel('Power [kW]', fontsize=24)
     # ax2.set_ylim([0, S_FC_max * 1.1 / 1000])
@@ -176,7 +195,8 @@ def plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TAN
 
     # Plot 3: Energy and TANK Size
     ax3.plot(range(len(df_input)), [E_TANK[t] / 3600000 for t in range(len(df_input))], label='TANK', color=palette[5])
-    ax3.plot(range(len(df_input)), [S_TANK / 3600000] * len(df_input), label='TANK size', linestyle='-.', color=palette[6])
+    ax3.plot(range(len(df_input)), [S_TANK / 3600000] * len(df_input), 
+             label=f'H2-TANK size: {S_TANK/ 3600000:.2f} kWh', linestyle='-.', color=palette[6])
     ax3.set_xlabel('Time [h]', fontsize=24)
     ax3.set_ylabel('Energy [kWh]', fontsize=24)
     # ax3.set_ylim([0, (S_TANK_max * 1.1) / 3600000])
@@ -244,45 +264,56 @@ def plot_WHR(results):
     # Convert the results dictionary into a pandas DataFrame
     df = pd.DataFrame(results)
     
-    # Create a figure with 2 rows and 1 column
+    # Divide specified columns by 1000 to convert values from Watts to Kilowatts
+    df['P_th_HT'] = df['P_th_HT'] / 1000
+    df['P_th_MT'] = df['P_th_MT'] / 1000
+    df['P_ELY'] = df['P_ELY'] / 1000
+    df['P_FC'] = df['P_FC'] / 1000
+    
+    # Create a figure with 2 rows and 1 column, adjusting subplot positions
     fig = make_subplots(rows=2, cols=1,
-                        subplot_titles=("Cooling Water Mass Flows", "Heat Recovery from the Electrolyzer and the Fuel Cell"),
+                        subplot_titles=("Heat Recovery", "Cooling Water Mass Flows"),
                         shared_xaxes=True)  # Ensure the x-axis (time) is shared between subplots
     
-    # Add Cooling Water Mass Flows to the first subplot
-    fig.add_trace(go.Scatter(x=df['ts'], y=df['m_cw_ELY'], name='m_cw_ELY', mode='lines'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df['ts'], y=df['m_cw_FC'], name='m_cw_FC', mode='lines'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df['ts'], y=df['m_cw_HT'], name='m_cw_HT', mode='lines'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df['ts'], y=df['m_cw_MT'], name='m_cw_MT', mode='lines'), row=1, col=1)
+    # First subplot for Heat Recovery in Kilowatt-hours
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['P_th_HT'], name='P_th_HT', stackgroup='one'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['P_th_MT'], name='P_th_MT', stackgroup='one'), row=1, col=1)
+    df['P_ELY_plus_P_FC'] = df['P_ELY'] + df['P_FC']  # Sum already in Kilowatts after division
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['P_ELY_plus_P_FC'], name='P_ELY + P_FC', mode='lines+markers'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['heat_zone3_35degC_demand_kWh'], name='Heat Demand Zone 3 @ 35°C', mode='lines', line=dict(dash='dot')), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['heat_zone3_60degC_demand_kWh'], name='Heat Demand Zone 3 @ 60°C', mode='lines', line=dict(dash='dot')), row=1, col=1)
 
-    # Add Heat Recovery to the second subplot
-    fig.add_trace(go.Scatter(x=df['ts'], y=df['P_th_HT'], name='P_th_HT', stackgroup='one'), row=2, col=1)
-    fig.add_trace(go.Scatter(x=df['ts'], y=df['P_th_MT'], name='P_th_MT', stackgroup='one'), row=2, col=1)
-    
-    # Add 'P_ELY + P_FC' line plot to the second subplot
-    df['P_ELY_plus_P_FC'] = df['P_ELY'] + df['P_FC']
-    fig.add_trace(go.Scatter(x=df['ts'], y=df['P_ELY_plus_P_FC'], name='P_ELY + P_FC', mode='lines+markers'), row=2, col=1)
+    # Second subplot for Cooling Water Mass Flows in Kilograms per second
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['m_cw_ELY'], name='m_cw_ELY', mode='lines'), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['m_cw_FC'], name='m_cw_FC', mode='lines'), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['m_cw_HT'], name='m_cw_HT', mode='lines'), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['m_cw_MT'], name='m_cw_MT', mode='lines'), row=2, col=1)
 
-    # Update layout to include range slider and selector
+    # Update layout to include range slider and selector, specify units on the Y-axes
     fig.update_layout(
         height=800, 
         title_text="WHR Analysis",
-        xaxis2=dict(
+        xaxis=dict(
             rangeslider=dict(
                 visible=True
             ),
             type="date",
             rangeselector=dict(
-                buttons=list([
-                    dict(count=1, label="1m", step="month", stepmode="backward"),
-                    dict(count=6, label="6m", step="month", stepmode="backward"),
-                    dict(count=1, label="YTD", step="year", stepmode="todate"),
-                    dict(count=1, label="1y", step="year", stepmode="backward"),
-                    dict(step="all")
-                ])
+                buttons=[
+                    dict(count=1, label="1y", step="year", stepmode="todate"),
+                    dict(count=1, label="1m", step="month", stepmode="todate"),
+                    dict(count=1, label="1d", step="day", stepmode="todate"),
+                ]
             )
+        ),
+        xaxis2=dict(
+            type="date"
         )
     )
+    
+    # Update y-axes titles to indicate units
+    fig.update_yaxes(title_text="Kilowatt-hours (kWh)", row=1, col=1)
+    fig.update_yaxes(title_text="Kilograms per second (kg/s)", row=2, col=1)
 
     # Save the figure as HTML and automatically open it
     #fig.write_html("WHR_plot.html", auto_open=True)
@@ -292,19 +323,22 @@ def plot_WHR(results):
 # Cost distribution plots
 #------------------------------------------------------------------------------
 
-def plot_costs_and_prices(all_costs, df_input):
+def plot_costs_and_prices(all_costs, df_input, electricity_price_imp, electricity_price_exp):
     """
     Parameters:
     - all_costs: dict, contains various cost components and revenues
     - df_input: DataFrame, input data including electricity prices
     """
+    
     fig, (ax1, ax2) = plt.subplots(nrows=2, figsize=(15, 15))
 
     # Plot electricity prices
-    ax1.plot(range(len(df_input)), df_input['price_Eur_MWh'], label='Import Price', color=palette[0])
-    ax1.plot(range(len(df_input)), df_input['Price_DayAhed'], label='Export Price', color=palette[1])
+    ax1.plot(range(len(df_input)), df_input['price_Eur_MWh'], label='Spot Market Import Price in €', color=palette[0])
+    ax1.plot(range(len(df_input)), electricity_price_imp, label='BKW import price in CHF', color=palette[2])
+    ax1.plot(range(len(df_input)), df_input['Price_DayAhed'], label='Day Ahead Export Price in €', color=palette[1])
+    ax1.plot(range(len(df_input)), electricity_price_exp, label='BKW export price in CHF', color=palette[4])
     ax1.set_xlabel('Time [h]', fontsize=24)
-    ax1.set_ylabel('Price [€/Wh]', fontsize=28)
+    ax1.set_ylabel('Price per MWh', fontsize=28)
     ax1.legend(fontsize=24)
     ax1.tick_params(axis='both', which='major', labelsize=24)
 

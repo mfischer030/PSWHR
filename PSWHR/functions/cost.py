@@ -15,8 +15,6 @@ def totalAnnualCost(system_sizes, energy_tariff,
                     m, high_usage,
                     df_input, nHours, timeline_choice):
     
-    # Capital recovery factor
-    # CRF = (annual_interest_rate * (1 + annual_interest_rate)**project_lifetime) / ((1 + annual_interest_rate)**project_lifetime - 1) # not used
 
     # Installation and maintenance costs in [€/y]------------------------------
     cost_inst  = 0  # Initialize cost_inst outside the loop
@@ -26,7 +24,7 @@ def totalAnnualCost(system_sizes, energy_tariff,
     cost_maint = sum(size * UP[component] * maintenance[component] for component, size in system_sizes.items())
     
     # Operation costs in [€/y]-------------------------------------------------
-    def electricity_prices(energy_tariff, P_imp, P_max_imp, P_exp, m, high_usage, df_input, timeline_choice, vat_included=True):
+    def electricity_cost(energy_tariff, P_imp, P_max_imp, P_exp, m, high_usage, df_input, timeline_choice, vat_included=True):
         
         # Calculate the mean operating time (mittlere Benutzungsdauer)
         if timeline_choice == 'week':
@@ -59,6 +57,22 @@ def totalAnnualCost(system_sizes, energy_tariff,
                 "Hochtarif":   {"excl_vat": 7.47, "incl_vat": 8.08},
                 "Niedertarif": {"excl_vat": 3.74, "incl_vat": 4.04},
                 }
+        
+        # Use these to check BIG-M constraint: high values for BD>3500 should
+        # result in the optimizer choosing prices for BD<3500
+        
+        # if m.addConstr(high_usage >= 1, "BD>3500"): 
+        #     grid_usage_perkWh = {
+        #         "Leistungstarif": {"excl_vat": 100, "incl_vat": 100},
+        #         "Hochtarif":   {"excl_vat": 100, "incl_vat": 100},
+        #         "Niedertarif": {"excl_vat": 100, "incl_vat": 100},
+        #         }
+        # elif m.addConstr(high_usage < 1, "BD<3500"):
+        #     grid_usage_perkWh = { 
+        #         "Leistungstarif": {"excl_vat": 7.55, "incl_vat": 8.16},
+        #         "Hochtarif":   {"excl_vat": 7.47, "incl_vat": 8.08},
+        #         "Niedertarif": {"excl_vat": 3.74, "incl_vat": 4.04},
+        #         }
     
         # SystemServices_Swissgrid + Stromreserve + Gesetzliche_Foerderabgabe + Abgabe_an_die_Gemeinde
         additionnal_grid_fees = {"excl_vat": 0.75 + 1.20 + 2.30 + 1.50, 
@@ -90,7 +104,7 @@ def totalAnnualCost(system_sizes, energy_tariff,
         df_input['Price_Export_Energy'] = df_input['Quartal'].apply(lambda x: price_export_energy[x])
 
         # Calculate the mean of these prices using numpy
-        price_export_energy = np.mean(price_export_energy)
+        price_export_energy = df_input['Price_Export_Energy']
         
         # Peak hours definition
         peak_time_start = 7
@@ -99,42 +113,63 @@ def totalAnnualCost(system_sizes, energy_tariff,
         # Initializing costs
         cost_elec_imp = 0
         cost_elec_exp = 0 
+        cost_grid_usage = 0
         cost_elec     = base_fee_incl_vat if vat_included else base_fee_excl_vat
+        
+        price_energy_per_kWh = []
+        price_grid_per_kWh   = []
         
         for i, row in df_input.iterrows():
             hour = row['HR']
             if peak_time_start <= hour < peak_time_end:
-                price_energy_per_kWh = energy_tariff_choice["peak_incl_vat" if vat_included else "peak_excl_vat"]
-                price_grid_per_kWh = grid_usage_perkWh["Hochtarif"]["incl_vat" if vat_included else "excl_vat"]
-                price_grid_per_kWh += additionnal_grid_fees["incl_vat" if vat_included else "excl_vat"] 
+                hourly_price_energy_per_kWh = energy_tariff_choice["peak_incl_vat" if vat_included else "peak_excl_vat"]
+                hourly_price_grid_per_kWh = grid_usage_perkWh["Hochtarif"]["incl_vat" if vat_included else "excl_vat"]
+                hourly_price_grid_per_kWh += additionnal_grid_fees["incl_vat" if vat_included else "excl_vat"] 
             else:
-                price_energy_per_kWh = energy_tariff_choice["off_peak_incl_vat" if vat_included else "off_peak_excl_vat"]
-                price_grid_per_kWh = grid_usage_perkWh["Niedertarif"]["incl_vat" if vat_included else "excl_vat"]
-                price_grid_per_kWh += additionnal_grid_fees["incl_vat" if vat_included else "excl_vat"]
+                hourly_price_energy_per_kWh = energy_tariff_choice["off_peak_incl_vat" if vat_included else "off_peak_excl_vat"]
+                hourly_price_grid_per_kWh = grid_usage_perkWh["Niedertarif"]["incl_vat" if vat_included else "excl_vat"]
+                hourly_price_grid_per_kWh += additionnal_grid_fees["incl_vat" if vat_included else "excl_vat"]
             
-            cost_elec_imp += P_imp[i] / 1000 * price_energy_per_kWh / 100       # in € assuming 1CHF = 1€
-            cost_elec_exp += P_exp[i] / 1000 * price_export_energy / 100        # in €
+            # Create a list with prices for plotting
+            price_energy_per_kWh.append(hourly_price_energy_per_kWh)
+            price_grid_per_kWh.append(hourly_price_grid_per_kWh)
+            
+            # Determine the cost / revenues for importing and exporting electricity
+            cost_elec_imp += P_imp[i] / 1000 * hourly_price_energy_per_kWh / 100       # in CHF
+            cost_elec_exp += P_exp[i] / 1000 * price_export_energy[i] / 100            # in CHF
         
-        # Calculating the grid fees associated with imports (Netzentgelte)
-        sum_P_imp = 0
-        sum_P_imp += sum(P_imp[t] for t in range(nHours))
-        cost_grid_usage = sum_P_imp / 1000 * price_grid_per_kWh / 100 
+            # Calculating the grid fees associated with imports (Netzentgelte)
+            # sum_P_imp = 0
+            # sum_P_imp += sum(P_imp[t] for t in range(nHours))
+            cost_grid_usage += P_imp[i] / 1000 * hourly_price_grid_per_kWh / 100 
+            
         
         for month in P_max_imp:
             cost_grid_usage += P_max_imp[month] / 1000 * grid_usage_perkWh["Leistungstarif"]["incl_vat" if vat_included else "excl_vat"]
         
         # Total cost of electricity imports and exports + grid fees
         cost_elec += (cost_elec_imp - cost_elec_exp) + cost_grid_usage
+        
+        electricity_prices = {
+            'Electricity prices [Rp./kWh]': price_energy_per_kWh,
+            'Grid use cost [Rp./kWh]': price_grid_per_kWh,
+            'Fees for monthly Import peaks [CHF/kW/Monat]':grid_usage_perkWh["Leistungstarif"],
+            'Additional Fees [Rp/kWh] (already accounted in Grid use cost)': additionnal_grid_fees,
+            'Elecricity export price [Rp.kWh]': price_export_energy
+            }
 
-        return cost_elec, cost_elec_imp, cost_elec_exp, cost_grid_usage
+        return cost_elec, cost_elec_imp, cost_elec_exp, cost_grid_usage, electricity_prices
     
-    cost_elec, cost_elec_imp, cost_elec_exp, cost_grid_usage = electricity_prices(energy_tariff, P_imp, P_max_imp, P_exp, m, high_usage, df_input, timeline_choice, vat_included=True)
     
+    cost_elec, cost_elec_imp, cost_elec_exp, cost_grid_usage, electricity_prices = electricity_cost(energy_tariff, P_imp, P_max_imp, P_exp, m, high_usage, df_input, timeline_choice, vat_included=True)
+    
+    # Calculate the revenues of exported Heat, prices for heat are in [€/kWh]
     cost_WHR = sum((P_th_LT[t]/1000 * cost_export_heatLT + P_th_HT[t]/1000 * cost_export_heatHT) for t in range(nHours))
     
+    # Calculate the total operating cost
     cost_op  = cost_elec - cost_WHR
 
-    return cost_inst, cost_elec_imp, cost_elec_exp, cost_grid_usage, cost_elec, cost_op, cost_maint, cost_WHR
+    return cost_inst, cost_elec_imp, cost_elec_exp, cost_grid_usage, cost_elec, cost_op, cost_maint, cost_WHR, electricity_prices
 
 # Code from Roxanne------------------------------------------------------------
 

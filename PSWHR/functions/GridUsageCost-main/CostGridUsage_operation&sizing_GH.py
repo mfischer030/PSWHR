@@ -92,8 +92,6 @@ model.addConstrs(P_disch[i] / eff_b_disch + P_imp[i] >= E_dem[i] + P_ch[i]  for 
 model.addConstr(E_b[hours_in_year] == E_b[0]) 
 
 
-
-
 # here we add the constraints needed for the grid usage tarif selection
 model.addConstr(h_usage == gp.quicksum(grid_usage[i] for i in range(hours_in_year))) # not sure this has to be a constraint, could be a normal calculation maybe 
 
