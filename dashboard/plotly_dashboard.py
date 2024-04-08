@@ -32,6 +32,7 @@ from dash import Dash, dcc, html, Input, Output, dash_table
 import os
 import threading
 import webbrowser
+import base64
 
 # Path to pv_sizingprob_WHR
 path = r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\PSWHR\PSWHR\PSWHR'
@@ -40,7 +41,17 @@ os.chdir(path)
 from pv_sizingprob_WHR import plot_power_generation, P_PV, P_imp, P_exp, df_input, nHours
 from pv_sizingprob_WHR import costs_pie_chart, all_costs
 from pv_sizingprob_WHR import plot_WHR, results
-                                    
+
+# Function to encode image to Base64
+def encode_image(image_path):
+    with open(image_path, 'rb') as f:
+        return base64.b64encode(f.read()).decode('utf-8')
+
+# Path to your image (adjust the path as necessary)
+image_path = r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\PSWHR\PSWHR\PSWHR\240327 - sys_design\HESS(1).png'
+
+# Encode the image
+encoded_image = encode_image(image_path)
 
 
 app = Dash(__name__, suppress_callback_exceptions=True)
@@ -50,6 +61,7 @@ app.title = "PSWHR Dashboard"
 app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
     html.Div([
+        dcc.Link('Welcome | ', href='/welcome'),
         dcc.Link('Demand | ', href='/demand'),
         dcc.Link('Sizes | ', href='/sizes'),
         dcc.Link('Operation | ', href='/operation'),
@@ -59,10 +71,10 @@ app.layout = html.Div([
     html.Div(id='page-content')
 ])
 # Layout for the Welcome page
-welcome_layout_layout = html.Div([
+welcome_layout = html.Div([
     html.H1('Peak Shaving using Hydrogen Energy Storage System with Heat Coupling'),
     html.P("The research focuses on the pivotal role of hydrogen in enhancing the flexibility of future energy systems, with a specific emphasis on Hydrogen Energy Storage Systems (HESS). The central concept involves the application of HESS at a charging station for battery electric vehicles (BEVs), utilizing both PV-panels and the grid as power sources. By leveraging HESS, the objective is to mitigate power peaks from BEVs and optimize recharging during low-demand periods. Additionally, the project explores the optimal integration of waste heat recovered from HESS to maximize its contribution to on-site heat demand."),
-    html.Img(src='240327 - sys_design/HESS(1).png', style={'width': '50%', 'height': 'auto'})
+    html.Img(src='data:image/png;base64,{}'.format(encoded_image), style={'width': '50%', 'height': 'auto'})
 ])
 
 # Layout for the Demand page
