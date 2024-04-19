@@ -8,35 +8,130 @@ Created on Fri Jan 12 17:14:39 2024
 import pandas as pd
 import numpy as np
 
-def totalAnnualCost(system_sizes, energy_tariff,
+def totalAnnualCost(system_sizes, energy_tariff, discountRate,
                     UP, maintenance, life, 
                     P_imp, P_max_imp, P_exp, P_th_LT, P_th_HT,
                     cost_imp_el, cost_exp_el, cost_export_heatLT, cost_export_heatHT,
                     m, high_usage,
-                    df_input, nHours, timeline_choice):
+                    df_input, nHours, timeline_choice,
+                    cost_ELY, #cost_C
+                    ):
     
 
     # Installation and maintenance costs in [€/y]------------------------------
     cost_inst  = 0  # Initialize cost_inst outside the loop
     cost_maint = 0
     
-    cost_inst  = sum((size * UP[component]) / life[component] for component, size in system_sizes.items())
-    cost_maint = sum(size * UP[component] * maintenance[component] for component, size in system_sizes.items())
+    r = discountRate
+    cost_inst_PV  = system_sizes['PV'] * UP['PV'] *  r / (1 - (1 / ((1 + r) ** life['PV'])))
+    cost_maint_PV = system_sizes['PV'] * UP['PV'] *  r / (1 - (1 / ((1 + r) ** life['PV']))) * maintenance['PV']
+    
+    cost_inst_BAT  = system_sizes['BAT'] * UP['BAT'] *  r / (1 - (1 / ((1 + r) ** life['BAT'])))
+    cost_maint_BAT = system_sizes['BAT'] * UP['BAT'] *  r / (1 - (1 / ((1 + r) ** life['BAT']))) * maintenance['BAT']
+    
+    cost_inst_ELY  = cost_ELY *  r / (1 - (1 / ((1 + r) ** life['ELY'])))
+    cost_maint_ELY = cost_ELY *  r / (1 - (1 / ((1 + r) ** life['ELY']))) * maintenance['ELY']
+    
+    cost_inst_C  = system_sizes['HESS']['C'] * UP['C'] *  r / (1 - (1 / ((1 + r) ** life['C'])))
+    cost_maint_C = system_sizes['HESS']['C'] * UP['C'] *  r / (1 - (1 / ((1 + r) ** life['C']))) * maintenance['C']
+    
+    # cost_inst_C  = cost_C *  r / (1 - (1 / ((1 + r) ** life['C'])))
+    # cost_maint_C = cost_C *  r / (1 - (1 / ((1 + r) ** life['C']))) * maintenance['C']
+    
+    cost_inst_TANK  = system_sizes['HESS']['TANK'] * UP['TANK'] *  r / (1 - (1 / ((1 + r) ** life['TANK'])))
+    cost_maint_TANK = system_sizes['HESS']['TANK'] * UP['TANK'] *  r / (1 - (1 / ((1 + r) ** life['TANK']))) * maintenance['TANK']
+    
+    cost_inst_FC  = system_sizes['HESS']['FC'] * UP['FC'] *  r / (1 - (1 / ((1 + r) ** life['FC'])))
+    cost_maint_FC = system_sizes['HESS']['FC'] * UP['FC'] *  r / (1 - (1 / ((1 + r) ** life['FC']))) * maintenance['FC']
+    
+    cost_inst_HEX  = system_sizes['WHR']['HEX'] * UP['HEX'] *  r / (1 - (1 / ((1 + r) ** life['HEX'])))
+    cost_maint_HEX = system_sizes['WHR']['HEX'] * UP['HEX'] *  r / (1 - (1 / ((1 + r) ** life['HEX']))) * maintenance['HEX']
+    
+    cost_inst_HP  = system_sizes['WHR']['HP'] * UP['HP'] *  r / (1 - (1 / ((1 + r) ** life['HP'])))
+    cost_maint_HP = system_sizes['WHR']['HP'] * UP['HP'] *  r / (1 - (1 / ((1 + r) ** life['HP']))) * maintenance['HP']
+    
+    cost_inst  = cost_inst_BAT + cost_inst_C + cost_inst_ELY + cost_inst_FC + cost_inst_HEX + cost_inst_HP + cost_inst_TANK + cost_inst_PV
+    cost_maint = cost_maint_BAT + cost_maint_C + cost_maint_ELY + cost_maint_FC + cost_maint_HEX + cost_maint_HP + cost_maint_TANK + cost_maint_PV
+    
+    # cost_inst  = sum((size * UP[component]) / life[component] for component, size in system_sizes.items())
+    # cost_maint = sum(size * UP[component] * maintenance[component] for component, size in system_sizes.items())
+    
+   #  def calculate_installation_cost_with_annuity(group, data, UP, life, annuityFactor):
+   #      """Calculate installation costs using the annuity factor for amortization over component life."""
+   #      if isinstance(data[group], dict):  # Handling sub-dictionaries like HESS and WHR
+   #          return sum((size * UP[component] * annuityFactor[component]) for component, size in data[group].items())
+   #      else:  # Handling single components like PV and BAT
+   #          return (data[group] * UP[group] * annuityFactor[group])
+
+   #  def calculate_maintenance_cost(group, data, UP, maintenance):
+   #      """Calculate maintenance costs for a group of components or a single component."""
+   #      if isinstance(data[group], dict):  # Handling sub-dictionaries like HESS and WHR
+   #          return sum((size * UP[component] * maintenance[component]) for component, size in data[group].items())
+   #      else:  # Handling single components like PV and BAT
+   #          return (data[group] * UP[group] * maintenance[group])
+    
+   #  def detailed_costs_for_group_with_annuity(group_data, UP, life, maintenance, annuityFactor):
+   #      """Calculate detailed installation and maintenance costs for components within a group using annuity factors."""
+   #      return {
+   #          component: {
+   #              'installation': (size * UP[component] * annuityFactor[component]),
+   #              'maintenance': (size * UP[component] * maintenance[component])
+   #          }
+   #          for component, size in group_data.items()
+   #      }
+    
+   #  r = discountRate  # Annual Discount Rate
+   #  annuityFactor = {
+   #      component: r / (1 - (1 / ((1 + r) ** life[component])))
+   #      for component in life
+   # }
+    
+   #  # Calculate costs for each group, including detailed costs for HESS and WHR
+   #  costs_with_annuity = {
+   #      'PV': {
+   #          'installation': calculate_installation_cost_with_annuity('PV', system_sizes, UP, life, annuityFactor),
+   #          'maintenance': calculate_maintenance_cost('PV', system_sizes, UP, maintenance)
+   #      },
+   #      'BAT': {
+   #          'installation': calculate_installation_cost_with_annuity('BAT', system_sizes, UP, life, annuityFactor),
+   #          'maintenance': calculate_maintenance_cost('BAT', system_sizes, UP, maintenance)
+   #      },
+   #      'HESS': detailed_costs_for_group_with_annuity(system_sizes['HESS'], UP, life, maintenance, annuityFactor),
+   #      'WHR': detailed_costs_for_group_with_annuity(system_sizes['WHR'], UP, life, maintenance, annuityFactor)
+   #  }
+    
+   #  # Print the detailed costs dictionary
+   #  print(costs_with_annuity)
+    
+   #  def calculate_total_costs(costs):
+   #      """Calculate total installation and maintenance costs from a structured costs dictionary."""
+   #      total_installation_cost = 0
+   #      total_maintenance_cost = 0
+   #      for group, details in costs.items():
+   #          if isinstance(details, dict):
+   #              # Check if direct group costs exist like PV and BAT
+   #              if 'installation' in details and 'maintenance' in details:
+   #                  total_installation_cost += details['installation']
+   #                  total_maintenance_cost += details['maintenance']
+   #              else:
+   #                  # Sub-groups like HESS and WHR
+   #                  for component, comp_details in details.items():
+   #                      total_installation_cost += comp_details['installation']
+   #                      total_maintenance_cost += comp_details['maintenance']
+   #      return total_installation_cost, total_maintenance_cost
+
+   #  # Calculate both total installation and maintenance costs
+   #  cost_inst, cost_maint = calculate_total_costs(costs_with_annuity)
+    
+    print(f"Total Installation Cost: {cost_inst}")
+    print(f"Total Maintenance Cost: {cost_maint}")
     
     # Operation costs in [€/y]-------------------------------------------------
     def electricity_cost(energy_tariff, P_imp, P_max_imp, P_exp, m, high_usage, df_input, timeline_choice, vat_included=True):
         
-        # Calculate the mean operating time (mittlere Benutzungsdauer)
-        if timeline_choice == 'week':
-            multiplier = 52                               # Assuming 52 weeks in a year
-        elif timeline_choice == 'month':
-            multiplier = 12                               # 12 months in a year
-        else:
-            multiplier = 1                                # Default to yearly calculation with no multiplication needed
-        
         # Base fees in CHF for choosen timeline (week,month,year)
-        base_fee_incl_vat = (42.16 + 616.17) / multiplier
-        base_fee_excl_vat = (39.00 + 570.00) / multiplier
+        base_fee_incl_vat = 42.16 + 616.17 
+        base_fee_excl_vat = 39.00 + 570.00 
 
         # Tariff-specific prices in Rappen per kWh
         tariffs = {
@@ -86,6 +181,8 @@ def totalAnnualCost(system_sizes, energy_tariff,
         
         # Given prices for exported energy in Rp/kWh
         price_export_energy = [13.07, 7.73, 7.24, 8.66]
+        # price_export_energy = 0
+        
         # Function to determine quartal based on month
         def determine_quartal(month):
             if 1 <= month <= 3: 
@@ -155,10 +252,12 @@ def totalAnnualCost(system_sizes, energy_tariff,
             'Grid use cost [Rp./kWh]': price_grid_per_kWh,
             'Fees for monthly Import peaks [CHF/kW/Monat]':grid_usage_perkWh["Leistungstarif"],
             'Additional Fees [Rp/kWh] (already accounted in Grid use cost)': additionnal_grid_fees,
-            'Elecricity export price [Rp.kWh]': price_export_energy
+            'Elecricity export price [Rp.kWh]': price_export_energy,
+            'Selected tariffs for energy prices': tariffs,
+            'Selected tariffs for grid usage prices': grid_usage_perkWh
             }
 
-        return cost_elec, cost_elec_imp, cost_elec_exp, cost_grid_usage, electricity_prices
+        return cost_elec, cost_elec_imp, cost_elec_exp, cost_grid_usage, electricity_prices, 
     
     
     cost_elec, cost_elec_imp, cost_elec_exp, cost_grid_usage, electricity_prices = electricity_cost(energy_tariff, P_imp, P_max_imp, P_exp, m, high_usage, df_input, timeline_choice, vat_included=True)
@@ -169,23 +268,5 @@ def totalAnnualCost(system_sizes, energy_tariff,
     # Calculate the total operating cost
     cost_op  = cost_elec - cost_WHR
 
-    return cost_inst, cost_elec_imp, cost_elec_exp, cost_grid_usage, cost_elec, cost_op, cost_maint, cost_WHR, electricity_prices
+    return cost_inst, cost_elec_imp, cost_elec_exp, cost_grid_usage, cost_elec, cost_op, cost_maint, cost_WHR, electricity_prices, #costs_with_annuity
 
-# Code from Roxanne------------------------------------------------------------
-
-# cost without WHR
-# cost_inst = (P_PV_peak*UP_PV/life_PV+P_e_nom*UP_e/life_e+C_b/3600*UP_b/life_b)/1000 # k€
-# cost_op   = sum(P_imp.*cost_el)/1000 # k€
-
-# costs with WHR
-# cost_inst    = (P_PV_peak * UP_PV/life_PV + P_e_nom * UP_e/life_e + C_b/3600 * UP_b/life_b + S_HP * UP_HP/life_HP + 43872*(S_c/1000)^(0.5861)/life_c + UP_storage * mass_H2_day_obj/life_storage)/1000; # [kEUR]
-# cost_op      = sum(P_imp.*cost_el)/1000 - sum(P_th_HT.*cost_export_heatHT)/1000 - sum(P_exp.*cost_export_el)/1000 # [kEUR]
-# cost_startup = sum(startup*cost_startup_ely)/1000
-
-# costs with more WHR and maintenance
-# cost_inst    = (P_PV_peak * UP_PV * ann_PV + P_e_nom * UP_e * ann_e + C_b/3600 * UP_b * ann_b + S_HP * UP_HP * ann_HP + (A_HEX*UP_HEX + Fixed_HEX) * ann_HEX + 43872*(S_c)^(0.5861) * ann_c + UP_storage * mass_H2_day_obj * ann_storage + UP_disp)/1000; # [kEUR/y] add more components minutillo, dispenser and refrigeration, size known by size storage
-# cost_inst    = (P_PV_peak * UP_PV * ann_PV + cost_e * ann_e + C_b/3600 * UP_b * ann_b + S_HP * UP_HP * ann_HP + (A_HEX*UP_HEX + Fixed_HEX) * ann_HEX + cost_c * ann_c + UP_storage * mass_H2_day_obj * ann_storage + UP_disp + P_refr * UP_refr * ann_refr )/1000; # [kEUR/y] add more components minutillo, dispenser and refrigeration
-# cost_op      = sum([P_imp[i] * cost_el[i] for i in range(len(P_imp))]) / 1000 - sum([P_th_HT[i] * cost_export_heatHT[i] for i in range(len(P_th_HT))]) / 1000 - sum([P_th_LT[i] * cost_export_heatLT[i] for i in range(len(P_th_LT))]) / 1000 - sum([P_exp[i] * cost_export_el[i] for i in range(len(P_exp))]) / 1000                         # [kEUR/y]
-# cost_maint   = (maint_PV * P_PV_peak * UP_PV + maint_e * cost_e + maint_b * C_b / 3600 * UP_b * ann_b + maint_HP * S_HP * UP_HP * ann_HP + maint_HEX * (A_HEX * UP_HEX + Fixed_HEX) * ann_HEX + maint_c * cost_c + maint_storage * UP_storage * mass_H2_day_obj * ann_storage + maint_disp * UP_disp + maint_refr * P_refr * UP_refr) / 1000  # [kEUR/y] mainly Poalo Gabrielli data
-# cost_startup = sum([startup[i] * cost_startup_ely[i] for i in range(len(startup))]) / 1000
-#------------------------------------------------------------------------------

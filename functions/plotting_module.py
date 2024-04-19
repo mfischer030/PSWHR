@@ -10,6 +10,7 @@ from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import seaborn as sns
 
 kWh2J = 3600*1000
@@ -79,35 +80,59 @@ def pv_efficiency(df_pv):
     plt.tight_layout()
     plt.show()
     
+
 def plot_power_generation(results, df_input, nHours):
+    # Prepare the data
     df = pd.DataFrame(results)
     df_plot = pd.DataFrame({
         'Time': range(nHours),
         'PV Generation [kW]': [p / 1000 for p in df['P_PV']],
         'Imported Power [kW]': [p / 1000 for p in df['P_imp']],
-        'Exported Power [kW]': [-p / 1000 for p in df['P_exp']]
+        'Exported Power [kW]': [-p / 1000 for p in df['P_exp']],
+        'Demand [kW]': [p / 1000 for p in df['P_demand']]
     })
-
-    # Melt the DataFrame to long format for easier plotting with Plotly Express
-    df_long = pd.melt(df_plot, id_vars=['Time'], 
-                      value_vars=['PV Generation [kW]', 'Imported Power [kW]', 'Exported Power [kW]'],
-                      var_name='Type', value_name='Power')
-
-    # Create the plot
-    fig = px.line(df_long, x='Time', y='Power', color='Type',
-                  labels={'Power': 'Power [kW]', 'Time': 'Time [h]'},
-                  color_discrete_map={
-                      'PV Generation [kW]': 'orange',
-                      'Imported Power [kW]': 'magenta',
-                      'Exported Power [kW]': 'green'
-                  })
-
-    # Update layout for aesthetics
-    fig.update_layout(title='PV Generation, Imported, and Exported Power Overview',
-                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
     
-    return fig
-    # fig.write_html('plot_power_generation.html', auto_open=True)
+    # Calculate total sums in MWh for legend labels
+    total_pv_gen_MWh = df_plot['PV Generation [kW]'].sum() / 1000
+    total_imported_MWh = df_plot['Imported Power [kW]'].sum() / 1000
+    total_exported_MWh = df_plot['Exported Power [kW]'].sum() / 1000
+    total_demand_MWh = df_plot['Demand [kW]'].sum() / 1000
+    
+    labels = [
+        f'PV Generation, total: {total_pv_gen_MWh:.2f} MWh',
+        f'Imported Power, total: {total_imported_MWh:.2f} MWh',
+        f'Exported Power, total: {total_exported_MWh:.2f} MWh',
+        f'Demand, total: {total_demand_MWh:.2f} MWh'
+    ]
+    
+    # Plot the data using Matplotlib
+    plt.figure(figsize=(20, 10))  # Set the figure size
+
+    # Stack plot for PV Generation and Imported Power
+    plt.stackplot(df_plot['Time'], df_plot['PV Generation [kW]'], df_plot['Imported Power [kW]'],
+                  labels=labels[:2],
+                  colors=['orange', 'magenta'])
+    
+    # Fill the area for Exported Power
+    plt.fill_between(df_plot['Time'], 0, df_plot['Exported Power [kW]'], color='green', alpha=1)
+    
+    # Plot Demand with a dotted line
+    plt.plot('Time', 'Demand [kW]', data=df_plot, color='blue', linestyle='--', linewidth=2)
+    
+    # Update labels for the remaining lines
+    plt.plot([], [], color='green', label=labels[2])  # For Exported Power
+    plt.plot([], [], color='blue', linestyle='--', label=labels[3])  # For Demand
+
+    # Style the plot
+    plt.title('PV Generation, Imported, Exported Power, and Demand Overview', fontsize=24)
+    plt.xlabel('Time [h]', fontsize=24)
+    plt.ylabel('Power [kW]', fontsize=24)
+    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.12), shadow=True, ncol=2, fontsize=24)
+    plt.grid(True)
+    plt.tick_params(axis='both', which='major', labelsize=24)
+
+    # Show or save the figure
+    plt.show()
 
 #------------------------------------------------------------------------------
 # Component sizes plots
@@ -149,7 +174,7 @@ def plot_component_sizes(S_PV, S_PV_max, S_ELY, S_ELY_max, S_C, S_C_max, S_FC, S
 # System operation plots
 #------------------------------------------------------------------------------
 
-def plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input):
+def plot_HESS_results(P_PV, P_ELY, P_ELY_PWA, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input):
     """
     Plot main results including the size and operation of the electrolyzer (ELY),
     fuel cell (FC), and energy and TANK size over time.
@@ -169,7 +194,8 @@ def plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TAN
     fig, (ax1, ax2, ax3) = plt.subplots(nrows=3, figsize=(20, 10))
 
     # Plot 1: Size and operation of the ELY
-    ax1.plot(range(len(df_input)), [P_ELY[t] / 1000 for t in range(len(df_input))], label='ELY', color=palette[1])
+    ax1.plot(range(len(df_input)), [P_ELY[t] / 1000 for t in range(len(df_input))], label='P_ELY_in', color=palette[1])
+    ax1.plot(range(len(df_input)), [P_ELY_PWA[t] / 1000 for t in range(len(df_input))], label='P_ELY_out', color=palette[4])
     ax1.plot(range(len(df_input)), [S_ELY / 1000] * len(df_input), 
              label=f'ELY size: {S_ELY / 1000:.2f} kW', linestyle='--', color=palette[3])
     # ax1.set_xlabel('Time [h]')
@@ -388,3 +414,48 @@ def costs_pie_chart(all_costs):
     
     return fig
     # fig.write_html('costs_pie_chart.html', auto_open=True)
+    
+#------------------------------------------------------------------------------
+# ELY PWA Plots
+#------------------------------------------------------------------------------
+def plot_ely_efficiency(P_ELY, P_ELY_PWA, S_ELY, nHours, x_bp_val, y_bp_val):
+    # Calculating and sorting input and output powers
+    inputPower  = sorted([P_ELY[t] / S_ELY for t in range(nHours)])
+    outputPower = sorted([P_ELY_PWA[t] / S_ELY for t in range(nHours)])
+    eta_ELY     = [(outp / inp) * 100 if inp != 0 else 0 for inp, outp in zip(inputPower, outputPower)]
+
+    # Compute eta_bp as the ratio of y_bp_val to x_bp_val
+    eta_bp = [(y / x)*100 for x, y in zip(x_bp_val, y_bp_val)]
+
+    # Create a figure and a set of subplots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 6))  # Adjusted size for better visibility
+
+    # Plotting the first subplot with a fixed color map range
+    norm = mcolors.Normalize(vmin=40, vmax=60)
+    scatter = ax1.scatter(inputPower, outputPower, c=eta_ELY, cmap='viridis', norm=norm, marker='o')
+    cbar = fig.colorbar(scatter, ax=ax1)
+    cbar.set_label('Efficiency [%]', fontsize=15)
+    ax1.set_xlabel('Input Power', fontsize=20)
+    ax1.set_ylabel('Output Power', fontsize=20)
+    ax1.set_title('ELY Normalized Input/Output Power Curve', fontsize=20)
+    ax1.grid(True)
+    ax1.tick_params(axis='both', labelsize=18)
+
+    # Plotting the second subplot for Electrolyser Efficiency
+    ax2.scatter(inputPower, eta_ELY, color='blue', marker='o')
+    # Integrating the plot from the previous answer
+    ax2.plot(x_bp_val, eta_bp, marker='o', color='red', label='eta_bp')  # Red color for distinction
+
+    ax2.set_xlabel('Input Power', fontsize=20)
+    ax2.set_ylabel('Efficiency [%]', fontsize=20)
+    ax2.set_xlim(0, 1.1)
+    ax2.set_ylim(35, 65)
+    ax2.set_title('Electrolyser Efficiency', fontsize=20)
+    ax2.grid(True)
+    ax2.tick_params(axis='both', labelsize=18)
+
+    ax2.legend(['Electrolyser', 'N_bp'])
+
+    # Adjust layout and show plot
+    plt.tight_layout()
+    plt.show()

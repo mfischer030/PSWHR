@@ -9,31 +9,36 @@ import pandas as pd
 import plotly.express as px
 from dash import Dash, html
 
-def heat_demand_plot(heat_35degC_demand, heat_65degC_demand):
-    nHours = len(heat_35degC_demand)
-    df = pd.DataFrame({
-        'Time': range(nHours),
-        'Heating Demand 35°C': heat_35degC_demand,
-        'Heating Demand 65°C': heat_65degC_demand
-    })
-    df_melted = df.melt(id_vars='Time', value_vars=['Heating Demand 35°C', 'Heating Demand 65°C'],
-                        var_name='Demand Type', value_name='Demand (kW)')
-    fig = px.area(df_melted, x='Time', y='Demand (kW)', color='Demand Type',
-                  title='Heat Demand 2022 NEST')
-    return fig
 
-def plot_power_generation(P_PV, P_imp, P_exp, df_input):
+def plot_power_generation(results, df_input, nHours):
+    df = pd.DataFrame(results)
     df_plot = pd.DataFrame({
-        'Time': range(len(df_input)),
-        'PV Generation [kW]': [p / 1000 for p in P_PV],
-        'Imported Power [kW]': [p / 1000 for p in P_imp],
-        'Exported Power [kW]': [-p / 1000 for p in P_exp]
+        'Time': range(nHours),
+        'PV Generation [kW]': [p / 1000 for p in df['P_PV']],
+        'Imported Power [kW]': [p / 1000 for p in df['P_imp']],
+        'Exported Power [kW]': [-p / 1000 for p in df['P_exp']]
     })
-    df_long = df_plot.melt(id_vars=['Time'], value_vars=['PV Generation [kW]', 'Imported Power [kW]', 'Exported Power [kW]'],
-                           var_name='Type', value_name='Power [kW]')
-    fig = px.line(df_long, x='Time', y='Power [kW]', color='Type',
-                  title='PV Generation, Imported, and Exported Power Overview')
+
+    # Melt the DataFrame to long format for easier plotting with Plotly Express
+    df_long = pd.melt(df_plot, id_vars=['Time'], 
+                      value_vars=['PV Generation [kW]', 'Imported Power [kW]', 'Exported Power [kW]'],
+                      var_name='Type', value_name='Power')
+
+    # Create the plot
+    fig = px.line(df_long, x='Time', y='Power', color='Type',
+                  labels={'Power': 'Power [kW]', 'Time': 'Time [h]'},
+                  color_discrete_map={
+                      'PV Generation [kW]': 'orange',
+                      'Imported Power [kW]': 'magenta',
+                      'Exported Power [kW]': 'green'
+                  })
+
+    # Update layout for aesthetics
+    fig.update_layout(title='PV Generation, Imported, and Exported Power Overview',
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+    
     return fig
+    # fig.write_html('plot_power_generation.html', auto_open=True)
 
 def plot_component_sizes(S_PV, S_PV_max, S_ELY, S_ELY_max, S_C, S_C_max, S_FC, S_FC_max, S_TANK, S_TANK_max):
     components = ['S_PV', 'S_ELY', 'S_C', 'S_FC', 'S_TANK']

@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import gurobipy as gp
-from gurobipy import Model, GRB
+from gurobipy import Model, GRB, LinExpr
 import sys # 
 from dash import Dash, html, dcc
 
@@ -32,28 +32,37 @@ user = 'maxime'    # 'christian', 'gabriele', 'maxime'
 
 from config import paths_configuration
 input_path, demand_path, heat_path, function_path, export_path = paths_configuration(user)
+
+# path to the functions directory => change in config.py if needed
+sys.path.append(function_path) 
 #------------------------------------------------------------------------------
 # Setting up the model
 #------------------------------------------------------------------------------
+
 # Choose energy tariff
-energy_tariff = "Grey" # Choose from "Green","Blue","Grey"
+energy_tariff = "Green" # Choose from "Green","Blue","Grey"
 
 # Flag to include/exclude battery in the optimization model
 include_battery = False
 
 # Choose the "grid-connectivity" of the model: Grid Connectivity Factor
-GCF = 50  # [%] of power which can be imported from the grid from the total energy demand
+GCF = 20  # [%] of power which can be imported from the grid from the total energy demand
 
 # Capital recovery factor CRF
-project_lifetime     = 20       # [years] | 2023_Giovanniello | 2021_Marocco
-annual_interest_rate = 0.07     # [-] 2023_Giovanniello | 2021_Marocco
-CRF = (annual_interest_rate * (1 + annual_interest_rate)**project_lifetime) / ((1 + annual_interest_rate)**project_lifetime - 1)
+discountRate = 0.07     # [-] Annual Discount Rate; 2023_Giovanniello | 2021_Marocco
+
+# Define number of breakpoints on PWA approx. of Electrolyser efficiency curve
+N_bp = 8
+
+# Import functions and get the efficiency and cost curve coefficients
+from efficiencies import pwa_eta_ELY
+x_bp_val, y_bp_val, mm_elec, qq_elec = pwa_eta_ELY(N_bp)
+
+from cost_curves import aa_c, bb_c, xx_c, aa_e, bb_e, xx_e
 
 #------------------------------------------------------------------------------
 # Import data
 #------------------------------------------------------------------------------
-# path to the functions directory => change in config.py if needed
-sys.path.append(function_path) 
 
 # Import data and generate variables using the get_data function---------------
 from import_data import get_data
@@ -68,25 +77,25 @@ heat_zone2_60degC_demand_kWh = df_heat_demand['Heating_Zone2_60degC_W'].values /
 heat_zone3_35degC_demand_kWh = df_heat_demand['Heating_Zone3_35degC_W'].values / 1000
 heat_zone3_60degC_demand_kWh = df_heat_demand['Heating_Zone3_60degC_W'].values / 1000
 
-# # Create a figure and axis for the plot
-# fig, ax = plt.subplots(figsize=(10, 6))
+# Create a figure and axis for the plot
+fig, ax = plt.subplots(figsize=(10, 6))
 
-# # Plot each series of data with a label
-# ax.plot(heat_zone1_35degC_demand_kWh, label='Zone 1, 35°C')
-# ax.plot(heat_zone1_60degC_demand_kWh, label='Zone 1, 60°C')
-# ax.plot(heat_zone2_35degC_demand_kWh, label='Zone 2, 35°C')
-# ax.plot(heat_zone2_60degC_demand_kWh, label='Zone 2, 60°C')
-# ax.plot(heat_zone3_35degC_demand_kWh, label='Zone 3, 35°C')
-# ax.plot(heat_zone3_60degC_demand_kWh, label='Zone 3, 60°C')
+# Plot each series of data with a label
+ax.plot(heat_zone1_35degC_demand_kWh, label='Zone 1, 35°C')
+ax.plot(heat_zone1_60degC_demand_kWh, label='Zone 1, 60°C')
+ax.plot(heat_zone2_35degC_demand_kWh, label='Zone 2, 35°C')
+ax.plot(heat_zone2_60degC_demand_kWh, label='Zone 2, 60°C')
+ax.plot(heat_zone3_35degC_demand_kWh, label='Zone 3, 35°C')
+ax.plot(heat_zone3_60degC_demand_kWh, label='Zone 3, 60°C')
 
-# # Add some plot decorations
-# ax.set_xlabel('Time')  # Assuming the index represents time
-# ax.set_ylabel('Demand (kWh)')
-# ax.set_title('Heating Demand by Zone and Temperature')
-# ax.legend()
+# Add some plot decorations
+ax.set_xlabel('Time')  # Assuming the index represents time
+ax.set_ylabel('Demand (kWh)')
+ax.set_title('Heating Demand by Zone and Temperature')
+ax.legend()
 
-# # Show the plot
-# plt.show()
+# Show the plot
+plt.show()
 
 # # Heat demand data (from NEST building @ empa, year 2022)----------------------
 # df_demand_heat = pd.read_excel(heat_path)
@@ -102,9 +111,6 @@ k    = 1.4                               # Ratio cp/cv [-]
 R_H2 = 4.1242 * 1000                     # Individual Gas constant H2 [J/kg*K]
 M_H2= 2.01568                            # in [g/mol]
 HHV  = 39.39 * 3600 * 1000               # Higher heating value of H2 in [J/kg] = 39.39 kWh/kg
-
-project_lifetime     = 25   # in [y] 2023_Wang et al - 20 years
-annual_interest_rate = 0.04 # Discount rate, as encouraged by EU, from Rox
 
 # Electricity prices in [EUR/MWh]
 cost_imp_el = df_input['price_Eur_MWh'].values # hourly cost to import 
@@ -158,10 +164,14 @@ C: from Roxanne | 2020_Pan et al: 0.9
 TANK: 2023_Wang et al
 FC: 2021_cigolotti Comprehensive Review on FC Technology for Stationary Applications: Electric Efficiency PEMFC: [38,38,37,40] in [%]
 """
-
-eta = {'PV': 0.21,'ELY': 0.6,'C': 0.7526,'TANK': 0.95,'FC': 0.5,}              # Realistic
+if N_bp == 2:
+    eta_ELY_nominal = mm_elec + qq_elec # Electrolyser efficiency at nominal power (approx) => from pem_efficiencies.py
+else:
+    eta_ELY_nominal = mm_elec[-1] + qq_elec[-1]
+    
+# eta = {'PV': 0.21,'ELY': eta_ELY_nominal,'C': 0.7526,'TANK': 0.95,'FC': 0.5,}              # Realistic
 #eta = {'PV': 0.21,'ELY': 0.8,'C': 0.8763,'TANK': 0.975,'FC': 0.75}
-#eta = {'PV': 0.21,'ELY': 1,'C': 1,'TANK': 1,'FC': 1}                          # Optimal      
+eta = {'PV': 0.21,'ELY': 1,'C': 1,'TANK': 1,'FC': 1}                                         # Optimal      
 
 #------------------------------------------------------------------------------
 # Unit prices of components / capital costs in [€/W] 
@@ -177,9 +187,9 @@ HEX:  in [€/m2] from Roxanne: 77.79 €/m2 + Fixed_HEX = 5291.9 (Fixed cost fo
 """
 
 
-UP = {'PV': 0.8,'BAT': 0.5/3600,'ELY': 1.7,'C': 0.0076, 'TANK': 9.34/(3.6*10**6),'FC': 2,  'HP': 0.576, 'HEX': 342.69}      # Realistic
+# UP = {'PV': 0.8,'BAT': 0.5/3600,'ELY': 1.7,'C': 0.0076, 'TANK': 9.34/(3.6*10**6),'FC': 2,  'HP': 0.576, 'HEX': 342.69}      # Realistic
 # UP = {'PV': 0.8,'BAT': 0.5/3600,'ELY': 1.128,'C': 0.00506,'TANK': 8.4/(3.6*10**6), 'FC': 1.3,'HP': 0.238, 'HEX': 221}     # Mid-Term
-# UP  =  {'PV': 0.8,'BAT': 0.5/3600,'ELY': 0.556,'C': 0.0038, 'TANK': 7.47/(3.6*10**6),'FC': 0.6,'HP': 0.200, 'HEX': 100}   # Optimal
+UP  =  {'PV': 0.8,'BAT': 0.5/3600,'ELY': 0.556,'C': 0.0038, 'TANK': 7.47/(3.6*10**6),'FC': 0.6,'HP': 0.200, 'HEX': 100}   # Optimal
 
 
 # Annual maintenance cost as fraction of total cost => from Roxanne------------
@@ -205,7 +215,7 @@ life = {'PV': 25,    # Roxanne: 30 | 2023_Tya Son Le: 25 years
         'HEX': 20    # from Roxanne
 }
 
-# Daily energy demand in [Wh/day] - P_demand is in [W]
+# Daily energy demand in [Wh/day] - P_demand is in [W] integrate over 8760 hours => [Wh]
 E_demand_day = sum(P_demand)/days # Gabriele: this is [Wh], correct, Maxime: yes
 
 # Maximal daily power demand in [W]
@@ -230,23 +240,23 @@ bat_params = {
 Area_PV_max  = 5000 # Maximum PV area [m2] => how to set, quantify the maximum pv area?
 
 # Electrolyser max and min nominal power (W)   
-S_ELY_max = 1000*1000   # Maximal Electrolyzer size in [W]
-S_ELY_min = 0           # Min. size ELY where problem is feasible [W] - from Rox
+S_ELY_max = 500*1000   # Maximal Electrolyzer size in [W]
+S_ELY_min = 1           # Min. size ELY where problem is feasible [W] - from Rox
 
 # Calculating the spezific work of the compresso, from Minutillo et al. 2021
 # (Analyzing the levelized cost of hydrogen eq 1+2) => from Roxanne 
 T_in_H2 = 65 + 273.15                       # H2 temperature (=T_cat=T_an) [K]  
-p_out   = 30                               # Compressor outlet pressure [bar] = H2 storage pressure 
+p_out   = 30                                # Compressor outlet pressure [bar] = H2 storage pressure 
 p_in    = 30                                # Compressor inlet pressure [bar]  PEM electrolyzer at Empa works at 30 bar 
 L_is_C  = (k/(k-1)) * R_H2 * T_in_H2 * (((p_out/p_in)**((k-1)/k)) - 1) # Specific work compressor [J/kg] 
 
 # Maximal TANK energy capacity (J) => 4 days storage capacity
-S_TANK_max = E_demand_day * 14 * 3600                     # E_demand_day in [Wh]  
+S_TANK_max = E_demand_day * 30 * 3600                     # E_demand_day in [Wh]  
 S_TANK_H2_max = S_TANK_max / HHV                          # equivalent in kg_H2
 
 # Maximal FC size as the maximal power demand divided by eff in [W]
 #S_FC_max = P_peak_max / eta["FC"]
-S_FC_max = 1000*1000  
+S_FC_max = 500*1000  
 """
 Range PEMFC = [10W;1MW] from 2021_cigolotti Comprehensive Review on Fuel Cell 
 Technology for Stationary Applications
@@ -279,7 +289,9 @@ S_HEX_max     = S_HEX_ELY_max + S_HEX_FC_max
 # Coefficient of performance (COP)
 COP_carnot= T_HT_out / (T_HT_out - T_out)             # Maximum COP HP
 COP       = 0.5 * COP_carnot                          # Real COP, as in Tiktak
+
 #------------------------------------------------------------------------------
+
 # Prompt the user to choose "Grid" or "Off-Grid" scenario
 scenario_choice = input("Enter 'grid' for grid-connected scenario or 'off-grid' for an off-grid scenario: ").lower()
 # Check the user's choice and set relevant parameters accordingly
@@ -295,19 +307,46 @@ else:
     
 #------------------------------------------------------------------------------
 # Define the optimization problem
-m = Model()
 #------------------------------------------------------------------------------
-# Design variables-------------------------------------------------------------
-# 1D-Variables
+
+m = Model()
+
+#------------------------------------------------------------------------------
+# Design variables
+#------------------------------------------------------------------------------
+
+# Sizing Variables
 Area_PV = m.addVar(lb=0,         ub=Area_PV_max, name='Area_PV')
 S_ELY   = m.addVar(lb=S_ELY_min, ub=S_ELY_max,   name='S_ELY')
 S_TANK  = m.addVar(lb=0,         ub=S_TANK_max,  name='S_TANK')
 S_FC    = m.addVar(lb=0,         ub=S_FC_max,    name='S_FC')
 
-# Time dependent variables
-P_ELY   = m.addVars(nHours, lb=0, ub=S_ELY_max,  name='P_ELY')
+S_HP     = m.addVar(lb=0, ub=P_th_max, name="S_HP")
+S_HEX    = m.addVar(lb=0, ub=S_HEX_max, name="S_HEX")
+# S_HEX  = m.addVar(lb=0, ub=P_th_max, name="S_HEX")  # Uncomment if S_HEX is needed
+
+# Operation Variables 
+P_ELY     = m.addVars(nHours, lb=0, ub=S_ELY_max, name='P_ELY')
+P_ELY_PWA = m.addVars(nHours, lb=0, ub=S_ELY_max, name='P_ELY')                  # Output from the Electrolyser => P_ELY[t] * eta[ELY][t]
+P_ElyOn   = m.addVars(nHours, lb=0, ub=S_ELY_max, name="P_ElyOn")
+ElyOn     = m.addVars(nHours, lb=0, ub=1,vtype=GRB.INTEGER, name="ElyOn")        # Binary Variable for ON-OFF condition of the Electrolyser
+
 E_TANK  = m.addVars(nHours, lb=0, ub=S_TANK_max, name='E_TANK')
-P_FC    = m.addVars(nHours, lb=0, ub=S_FC_max,   name='P_FC')    
+
+# Parameters provided
+P_bp     = 47.97 * 1000         # Breakpoint power in Watts (converted from kW)
+i_bp     = 123.05               # Breakpoint current in A
+P_min_fc = 30 * 1000            # Minimum power in Watts (converted from kW)
+P_max_fc = 1000 * 1000          # Maximum power in Watts (converted from kW)
+
+P_FC = m.addVars(nHours, lb=0, ub=S_FC_max, name='P_FC')         # Fuel Cell Output Power in [W]
+
+# P_FC_PWA = m.addVars(nHours, lb=0, ub=S_FC_max, name='P_FC_PWA')         # Fuel Cell Output Power in [W]
+# u_FC     = m.addVars(nHours, lb=0, ub=S_FC_max, name='P_FC')             # Fuel Cell Input Power in [W]
+# i_FC     = m.addVars(nHours, name='i_fc')
+# Vdot_FC  = m.addVars(nHours, name='v_fc')                                # H2 Volume Flow in [Nm3/s]  
+# z1       = m.addVars(nHours, vtype=GRB.BINARY, name='z1')                # Binary Variable for PWA (slope 1)
+# z2       = m.addVars(nHours, vtype=GRB.BINARY, name='z2')                # Binary Variable for PWA (slope 2)
     
 P_imp     = m.addVars(nHours, lb=0, ub=P_imp_ub,   name="P_imp")               # Imported electricity from the Grid in [W]
 P_max_imp = m.addVars(months, lb=0, ub=P_imp_ub,   name="P_max_imp")
@@ -322,53 +361,33 @@ m_cw_MT  = m.addVars(nHours, lb=0, ub=m_cw_max, name="m_cw_LT")                #
 P_th_HT  = m.addVars(nHours, lb=0, ub=P_th_max, name="P_th_HT")  
 P_th_MT  = m.addVars(nHours, lb=0, ub=P_th_max, name="P_th_LT")
 
-S_HP     = m.addVar(lb=0, ub=P_th_max, name="S_HP")
-S_HEX    = m.addVar(lb=0, ub=S_HEX_max, name="S_HEX")
-# S_HEX  = m.addVar(lb=0, ub=P_th_max, name="S_HEX")  # Uncomment if S_HEX is needed
 
 if include_battery:
-    P_ch    = m.addVars(nHours,lb=0, ub=bat_params['C_b_max'], name="P_ch")                                                 # Power charged to the battery
-    P_ds    = m.addVars(nHours,lb=0, ub=bat_params['C_b_max'], name="P_ds")                                                 # Power discharged from the battery
-    E_b     = m.addVars(nHours,lb=0, ub=bat_params['C_b_max'], name="E_b")              # Energy in the battery at each time step
-    C_b     = m.addVar(lb=bat_params['C_b_min'], ub=bat_params['C_b_max'], name="C_b")       # Battery Capacity
+    P_ch    = m.addVars(nHours,lb=0, ub=bat_params['C_b_max'], name="P_ch")              # Power charged to the battery
+    P_ds    = m.addVars(nHours,lb=0, ub=bat_params['C_b_max'], name="P_ds")              # Power discharged from the battery
+    E_b     = m.addVars(nHours,lb=0, ub=bat_params['C_b_max'], name="E_b")               # Energy in the battery at each time step
+    C_b     = m.addVar(lb=bat_params['C_b_min'], ub=bat_params['C_b_max'], name="C_b")   # Battery Capacity
+    
 
 grid_usage = m.addVars(nHours, vtype=GRB.BINARY, name="grid_usage")  # Binary variable for grid usage indicator, 1 if used, i.e. P_imp>0, 0 otherwise
 h_usage    = m.addVar(lb=0, ub=nHours, name="h_usage")               # Total hours of grid usage
 high_usage = m.addVar(vtype=GRB.BINARY, name="high_usage")           # Binary variable indicating whether grid usage is above the threshold, 1 if above, 0 if below
+
+
 #------------------------------------------------------------------------------
 # Additional calculations
 #------------------------------------------------------------------------------
-# PV calculation
-# Sources: De Soto W et al. (2006); Sun V et al. (2020)
-def pv_efficiency(irradiance, T_amb):
-    eta_PV_ref  = 0.15  # Consider changing back to 0.21 
-    T_PV_ref    = 25    # Reference temperature of the pv cell in [°C]
-    beta_PV_ref = 0.004 # in [K]
-    gamma_PV    = 0.12
-    NOCT        = 45
-    
-    # Calculate T_cell based on ambient Temperature T_amb (also found in 2015_Guinot et al.)
-    T_cell = T_amb + (NOCT - 20) * irradiance / 800
 
-    # Initialize eff_cell as a zeros array of the same length as irradiance
-    eta_cell = np.zeros(len(irradiance))
+# PV calculation---------------------------------------------------------------
 
-    # Loop through each irradiance value
-    for i in range(len(irradiance)): 
-        if irradiance[i] == 0:
-            eta_cell[i] = 0
-        else:
-            eta_cell[i] = eta_PV_ref * (1 - beta_PV_ref * (T_cell[i] - T_PV_ref) + gamma_PV * np.log10(irradiance[i]))
-    
-    return eta_cell
+# Load the pv_efficiency function from efficiencies.py
+from efficiencies import pv_efficiency
 
 # Calling the function which calculates the relative efficiency
 eta_cell = pv_efficiency(irradiance, T_amb)
+
 # Generate dataframe for plot
 df_pv = pd.DataFrame({'irradiance': irradiance,'T_amb': T_amb,'eta_cell': eta_cell})
-
-from plotting_module import pv_efficiency
-# pv_efficiency(df_pv)
 
 P_PV = [irradiance[t] * eta_cell[t] * Area_PV  for t in range(nHours)]          # Hourly PV power generation [W]
 # P_PV = [irradiance[t] * eta['PV'] * Area_PV  for t in range(nHours)]          # Hourly PV power generation [W]
@@ -380,27 +399,34 @@ S_PV = P_PV_peak
 # which irradiance is fixed at 1000 W/m2. I think it is fairer, otherwise you have your peak power depending on sun availability, and given that your unit 
 # price is CHF/kW, it would not be fair to have an investiment cost depending on sun availability (how much units you install instead depends on the sun availability)
 
-#------------------------------------------------------------------------------
-# Hydrogen mass flow
+# Hydrogen mass flow-----------------------------------------------------------
+
 # Nominal mass flow hydrogen [kg/h]                                          
-mdot_H2_nom = (S_ELY * eta["ELY"] * deltat) / HHV                
+mdot_H2_nom = S_ELY     * eta["ELY"] / HHV 
+mdot_H2_max = S_ELY_max * eta['ELY'] / HHV               
+
 # Mass flow produced hydrogen [kg/h]                    
-mdot_H2 = [(P_ELY[t] * eta['ELY'] * deltat) / HHV for t in range(nHours)] 
+# mdot_H2 = [P_ELY[t] * eta['ELY']  / HHV for t in range(nHours)] 
+mdot_H2   = [P_ELY_PWA[t] / HHV for t in range(nHours)] 
 
 # Size (S_C) and operating power (P_C) of the compressor in [W]
-S_C = mdot_H2_nom * L_is_C / (eta["C"] * deltat) 
-P_C = [mdot_H2[t] * L_is_C / (eta['C']* deltat)  for t in range(nHours)]
+S_C     = mdot_H2_nom * L_is_C / eta["C"]  
+S_C_max = mdot_H2_max * L_is_C / eta["C"] 
+P_C     = [mdot_H2[t] * L_is_C / eta['C'] for t in range(nHours)]
 
 #------------------------------------------------------------------------------
 # Constraints
 #------------------------------------------------------------------------------
 
 for t in range(1, nHours):
-    # constraint for the energy balance in time over the storage component
-    m.addConstr(E_TANK[t] == E_TANK[t-1] + P_ELY[t] * eta['ELY'] * deltat - ((P_FC[t] * deltat) / eta['FC']), name='HESS Balance')  
+    # Energy Balance for HESS
+    # m.addConstr(E_TANK[t] == E_TANK[t-1] + P_ELY[t] * eta['ELY'] * deltat - ((P_FC[t] * deltat) / eta['FC']), name='HESS Balance')
+    m.addConstr(E_TANK[t] == E_TANK[t-1] + P_ELY_PWA[t] * deltat - ((P_FC[t] * deltat) / eta['FC']), name='HESS Balance')
+    # m.addConstr(E_TANK[t] == E_TANK[t-1] + P_ELY_PWA[t] * deltat - P_FC_PWA[t] * deltat, name='HESS Balance')  
     
     # constraint for the ELY power not to exceed the storage capacity
-    m.addConstr(P_ELY[t]  <= (S_TANK - E_TANK[t-1]) / deltat, name='ELY')       
+    # m.addConstr(P_ELY[t]  <= (S_TANK - E_TANK[t-1]) / deltat, name='ELY') 
+    m.addConstr(P_ELY_PWA[t]  <= (S_TANK - E_TANK[t-1]) / deltat, name='ELY')       
     
     # constraint for the FC to only use hydrogen available in the storage
     m.addConstr(P_FC[t]   <= E_TANK[t-1] / deltat, name='FC')                   
@@ -409,9 +435,6 @@ for t in range(nHours):
     m.addConstr((P_ELY[t]  <= S_ELY),  name="upper_Size_Constraint_ELY")
     m.addConstr((E_TANK[t] <= S_TANK), name= "upper_Size_Constraint_TANK")
     m.addConstr((P_FC[t]   <= S_FC ),  name= "upper_Size_Constraint_FC")
-    
-
-m.addConstr(gp.quicksum(P_imp) <= GCF/100 * gp.quicksum(P_demand), name= "GridUse")
 
 # Initializing FC power
 m.addConstr(P_FC[0] <= E_TANK[0] / deltat, name= "InitialFC")                                    
@@ -419,14 +442,18 @@ m.addConstr(P_FC[0] <= E_TANK[0] / deltat, name= "InitialFC")
 # constraint for H2 storage equal at final and last time step (periodicity)
 m.addConstr(E_TANK[0] == E_TANK[nHours-1], name='Periodicity_HESS') # 08.02: added name to cosntraint
 
-
 # Overall energy balance: left => consumers | right => generators
 if include_battery:
     m.addConstrs((P_ELY[t] + (P_th_HT[t])/COP + P_C[t] + P_ch[t] + P_exp[t] + P_demand[t] <= P_PV[t] + P_ds[t] + P_imp[t] + P_FC[t]  for t in range(nHours)), name='EnergyBalance') 
 else:
     m.addConstrs((P_ELY[t] + (P_th_HT[t])/COP + P_C[t]           + P_exp[t] + P_demand[t] <= P_PV[t]           + P_imp[t] + P_FC[t]  for t in range(nHours)), name='EnergyBalance')
 
-# Iterate over each month and add constraints based on P_imp[t] for timesteps in that month
+# Constraint for the Grid Connectivity 
+for t in range(nHours):
+    # m.addConstr(P_imp[t] <= GCF/100 * P_demand[t], name= "GridUse")
+    m.addConstr(gp.quicksum(P_imp) <= GCF/100 * gp.quicksum(P_demand), name= "GridUse")
+
+# Monthly import peaks for cost function
 for month in months:
     timestep_indices = df_input.index[df_input['MO'] == month].tolist()
     for t in timestep_indices:
@@ -486,6 +513,139 @@ m.addConstr(h_usage == gp.quicksum(grid_usage[i] for i in range(nHours))) # not 
 m.addConstr(h_usage - threshold_hours[timeline_choice] <= M_threshold * high_usage)# if h_usage is larger than threshold, the inequality is respected only if high_usage takes value 1. 
 # here I choose the M_threshold in the order of the hours in the year
 
+# PWA approximation of the Electrolyser----------------------------------------
+
+for t in range(nHours):
+    # Constraint: P_e should be less than or equal to P_ElyOn
+    m.addConstr(P_ELY[t] <= P_ElyOn[t], "MaxPowerEly")
+
+    # Constraint: P_e should be at least 20% of P_ElyOn
+    m.addConstr(P_ELY[t] >= 0.2 * P_ElyOn[t], "MinPowerEly")
+
+    # Constraint: P_ElyOn not to exceed the maximum power when the electrolyser is on (S_e_max) 
+    m.addConstr(P_ElyOn[t] <= S_ELY_max * ElyOn[t], "PowerEly1")
+
+    # Constraint: P_ElyOn should not exceed S_e
+    m.addConstr(P_ElyOn[t] <= S_ELY, "PowerEly3")
+
+    # Constraint: When the electrolyser is off (ElyOn = 0), P_ElyOn should be at least S_e - S_e_max. When ElyOn = 1, this constraint has no effect because S_e - S_e_max * (1 - ElyOn) equals S_e - S_e_max * 0 = S_e
+    m.addConstr(P_ElyOn[t] >= S_ELY - S_ELY_max * (1 - ElyOn[t]), f"PowerEly4_{i}")
+    
+    # Piecewise linear approximation constraints
+    if N_bp == 1:
+        m.addConstr(P_ELY_PWA[t] == eta_ELY_nominal * P_ELY[t], "Efficiency Electrolyser N_bp=1")
+    elif N_bp == 2:
+        m.addConstr(P_ELY_PWA[t] <= mm_elec * P_ELY[t] + qq_elec * P_ElyOn[t],  "PWA_Q1")
+    elif N_bp==3:
+        m.addConstr(P_ELY_PWA[t] <= mm_elec[0] * P_ELY[t] + qq_elec[0] * P_ElyOn[t],  "PWA_Q1")
+        m.addConstr(P_ELY_PWA[t] <= mm_elec[1]  * P_ELY[t] + qq_elec[1] * P_ElyOn[t], "PWA_Q2")
+    elif N_bp==4:
+        m.addConstr(P_ELY_PWA[t] <= mm_elec[0] * P_ELY[t] + qq_elec[0] * P_ElyOn[t],  "PWA_Q1")
+        m.addConstr(P_ELY_PWA[t] <= mm_elec[1]  * P_ELY[t] + qq_elec[1] * P_ElyOn[t], "PWA_Q2")
+        m.addConstr(P_ELY_PWA[t] <= mm_elec[2]  * P_ELY[t] + qq_elec[2] * P_ElyOn[t], "PWA_Q3")
+    elif N_bp==8:
+        m.addConstr(P_ELY_PWA[t] <= mm_elec[0]  * P_ELY[t] + qq_elec[0] * P_ElyOn[t],  "PWA_Q1")
+        m.addConstr(P_ELY_PWA[t] <= mm_elec[1]  * P_ELY[t] + qq_elec[1] * P_ElyOn[t], "PWA_Q2")
+        m.addConstr(P_ELY_PWA[t] <= mm_elec[2]  * P_ELY[t] + qq_elec[2] * P_ElyOn[t], "PWA_Q3")
+        m.addConstr(P_ELY_PWA[t] <= mm_elec[3]  * P_ELY[t] + qq_elec[3] * P_ElyOn[t],  "PWA_Q4")
+        m.addConstr(P_ELY_PWA[t] <= mm_elec[4]  * P_ELY[t] + qq_elec[4] * P_ElyOn[t],  "PWA_Q5")
+        m.addConstr(P_ELY_PWA[t] <= mm_elec[5]  * P_ELY[t] + qq_elec[5] * P_ElyOn[t],  "PWA_Q6")
+        m.addConstr(P_ELY_PWA[t] <= mm_elec[6]  * P_ELY[t] + qq_elec[6] * P_ElyOn[t],  "PWA_Q7")
+        
+    # m.addConstr(P_ELY_PWA[t] <= mm_elec[7]  * P_ELY[t] + qq_elec[7] * P_ElyOn[t],  "PWA_Q8")
+    # m.addConstr(P_ELY_PWA[t] <= mm_elec[8]  * P_ELY[t] + qq_elec[8] * P_ElyOn[t],  "PWA_Q9")
+    # m.addConstr(P_ELY_PWA[t] <= mm_elec[9]  * P_ELY[t] + qq_elec[9] * P_ElyOn[t],  "PWA_Q10")
+    # m.addConstr(P_ELY_PWA[t] <= mm_elec[10] * P_ELY[t] + qq_elec[10] * P_ElyOn[t], "PWA_Q11")
+
+# PWA approximation of the Fuel Cell-------------------------------------------
+
+s1       = 2.56 * 1000          # Slope below breakpoint in [1/V]
+s2       = 3.31 * 1000          # Slope above breakpoint in [1/V]
+c        = 0.21                 # Volume flow conversion factor in [Nm3/C]
+d        = 0.96                 # Efficiency coefficient [-]
+
+# Constraints
+# for t in range(nHours):
+#     # Enforce the binary variables for the segments
+#     m.addConstr(z1[t] + z2[t] == 1, name=f'piecewise_selection_{t}')
+
+#     # First segment constraints
+#     m.addConstr(i_FC[t] <= s1 * u_FC[t] + (1 - z1[t]) * S_FC_max, name=f'first_segment_upper_{t}')
+#     m.addConstr(i_FC[t] >= s1 * u_FC[t] - (1 - z1[t]) * S_FC_max, name=f'first_segment_lower_{t}')
+#     m.addConstr(u_FC[t] <= P_bp + (1 - z1[t]) * S_FC_max, name=f'first_segment_range_{t}')
+
+#     # Second segment constraints
+#     m.addConstr(i_FC[t] <= s2 * (u_FC[t] - P_bp) + i_bp + (1 - z2[t]) * S_FC_max, name=f'second_segment_upper_{t}')
+#     m.addConstr(i_FC[t] >= s2 * (u_FC[t] - P_bp) + i_bp - (1 - z2[t]) * S_FC_max, name=f'second_segment_lower_{t}')
+#     m.addConstr(u_FC[t]  >= P_bp - (1 - z2[t]) * S_FC_max, name=f'second_segment_range_{t}')
+
+#     # Calculate the H2 volume flow 'Vdot_FC' based on the current 'i_FC'
+#     m.addConstr(Vdot_FC[t] == c * i_FC[t], name=f'H2volume_flow_{t}')
+
+#     # Calculate the PWA power output 'P_FC_PWA' based on the power input 'u_FC'
+#     m.addConstr(P_FC_PWA[t] == d * u_FC[t], name=f'power_output_{t}')
+
+# Implement cost curves: compressor and electrolyser --------------------------
+
+
+# cost_C_max = aa_c[1]*S_C_max + bb_c[1]
+# cost_C     = m.addVar(lb=0, ub=cost_C_max, name="cost_c")
+# y_c1       = m.addVar(vtype=GRB.BINARY,    name="y_c1")
+# y_c2       = m.addVar(vtype=GRB.BINARY,    name="y_c2")
+# S_cy1      = m.addVar(lb=0, ub=S_C_max,    name="S_cy1")
+# S_cy2      = m.addVar(lb=0, ub=S_C_max,    name="S_cy2")
+    
+# # Comp constraints
+# m.addConstr(S_cy1 <= S_C_max * y_c1,             "Comp_cy11")
+# m.addConstr(S_cy1 <= S_C,                        "Comp_cy13")
+# m.addConstr(S_cy1 >= S_C - S_C_max * (1 - y_c1), "Comp_cy14")
+    
+# m.addConstr(S_cy2 <= S_C_max * y_c2,             "Comp_cy21")
+# m.addConstr(S_cy2 <= S_C,                        "Comp_cy23")
+# m.addConstr(S_cy2 >= S_C - S_C_max * (1 - y_c2), "Comp_cy24")
+    
+# m.addConstr(cost_C == aa_c[0] * S_cy1 + bb_c[0] * y_c1 + aa_c[1] * S_cy2 + bb_c[1] * y_c2, "Comp_cost")
+# m.addConstr(y_c1 + y_c2 == 1, "Comp_cost2")
+# m.addConstr(S_C <= xx_c[0] * y_c1 + xx_c[1] * y_c2, "Comp_cost4")
+
+
+# Define the breakpoints for the piecewise approximation of the cost curves
+x_bp_ELY = [250000, 400000, 550000]
+y_bp_ELY = [347388, 495479, 632884]
+
+x_bp_C = [5000, 12500, 20000]
+y_bp_C = [112682, 192791, 253934]
+
+# Define the 'S_C' variables which represent the sizes of C
+S_C = m.addVar(vtype=GRB.CONTINUOUS, name="S_C")
+
+# Define binary variables for selecting the piecewise segments for ELY and C
+y_ELY = m.addVars(len(x_bp_ELY) + 1, vtype=GRB.BINARY, name="y_ELY")
+y_C   = m.addVars(len(x_bp_C) + 1, vtype=GRB.BINARY, name="y_C")
+
+# Ensure only one y variable for ELY and C can be 1 at the same time
+m.addConstr(sum(y_ELY[i] for i in range(len(y_ELY))) == 1, "UniqueSegment_ELY")
+m.addConstr(sum(y_C[i]   for i in range(len(y_C)))   == 1, "UniqueSegment_C")
+
+# Add the piecewise linear cost functions using the breakpoints
+cost_ELY = m.addVar(vtype=GRB.CONTINUOUS, name="cost_ELY")
+m.addGenConstrPWL(S_ELY, cost_ELY, x_bp_ELY, y_bp_ELY, "PWL_ELY")
+
+# # Create binary variable for the condition S_C > 0
+# is_S_C_positive = m.addVar(vtype=GRB.BINARY, name="is_S_C_positive")
+
+# # Set is_S_C_positive to 1 if S_c is greater than a very small number (effectively 0)
+# m.addGenConstrIndicator(is_S_C_positive, True, S_C >= 1e-4, name="Indicator_S_C_positive")
+
+# # Add the piecewise linear cost functions using the breakpoints for C
+# cost_C = m.addVar(vtype=GRB.CONTINUOUS, name="cost_C")
+
+# # Link the cost_C to the condition that is_S_C_positive is True
+# m.addGenConstrIndicator(is_S_C_positive, True, m.addGenConstrPWL(S_C, cost_C, x_bp_C, y_bp_C, "PWL_C"), name="Cost_C_PWL")
+
+# # Add a constraint to set cost_C to 0 when S_C <= 0
+# m.addConstr((1 - is_S_C_positive) * cost_C == 0, "Cost_C_Zero")
+
 #------------------------------------------------------------------------------
 # Run cost function
 #------------------------------------------------------------------------------
@@ -494,23 +654,47 @@ if include_battery:
 else:
     S_BAT = 0
     
-system_sizes = {'PV': S_PV,'BAT': S_BAT,'ELY': S_ELY,'C': S_C,
-                'TANK': S_TANK,'FC': S_FC,'HEX': S_HEX,'HP': S_HP}
+system_sizes = {'PV': S_PV,
+                'BAT': S_BAT,
+                'HESS':{'ELY': S_ELY,'C': S_C,'TANK': S_TANK,'FC': S_FC},
+                'WHR':{'HEX': S_HEX,'HP': S_HP}
+                }
 
 from cost import totalAnnualCost
 
+# [cost_inst, cost_elec_imp, cost_elec_exp, cost_grid_usage, cost_elec, cost_op, 
+#   cost_maint, cost_WHR, electricity_prices, costs_with_annuity] = totalAnnualCost(
+#                         system_sizes, energy_tariff, discountRate,
+#                         UP, maintenance, life, 
+#                         P_imp, P_max_imp, P_exp, P_th_MT, P_th_HT,
+#                         cost_imp_el, cost_exp_el, cost_export_heatMT, cost_export_heatHT,
+#                         m, high_usage,
+#                         df_input, nHours, timeline_choice,
+#                         cost_ELY, cost_C
+#                         )
+     
 [cost_inst, cost_elec_imp, cost_elec_exp, cost_grid_usage, cost_elec, cost_op, 
-cost_maint, cost_WHR, electricity_prices] = totalAnnualCost(
-                        system_sizes, energy_tariff,
+  cost_maint, cost_WHR, electricity_prices] = totalAnnualCost(
+                        system_sizes, energy_tariff, discountRate,
                         UP, maintenance, life, 
                         P_imp, P_max_imp, P_exp, P_th_MT, P_th_HT,
                         cost_imp_el, cost_exp_el, cost_export_heatMT, cost_export_heatHT,
                         m, high_usage,
-                        df_input, nHours, timeline_choice
+                        df_input, nHours, timeline_choice,
+                        cost_ELY, #)cost_C
                         )
 
 # Total annual costs in [€/y]--------------------------------------------------
-cost = cost_inst + cost_op + cost_maint
+
+# Defining a factor to adjust overall cost to choosen timeline
+if timeline_choice == 'week':
+    multiplier = 52                               # Assuming 52 weeks in a year
+elif timeline_choice == 'month':
+    multiplier = 12                               # 12 months in a year
+else:
+    multiplier = 1                                # Default to yearly calculation with no multiplication needed
+
+cost = (cost_inst + cost_op + cost_maint)/multiplier
 
 #------------------------------------------------------------------------------
 # Define the objective function: minimal costs
@@ -541,11 +725,24 @@ print(f"Optimization status: {m.status}")
 #------------------------------------------------------------------------------
 
 # For Gurobi tupledict object
-P_ELY  = [P_ELY[t].X  for t in range(nHours)]
-P_FC   = [P_FC[t].X   for t in range(nHours)]
-E_TANK = [E_TANK[t].X for t in range(nHours)]
-P_imp  = [P_imp[t].X  for t in range(nHours)]
-P_exp  = [P_exp[t].X  for t in range(nHours)]
+P_ELY   = [P_ELY[t].X   for t in range(nHours)]
+P_ElyOn = [P_ElyOn[t].X for t in range(nHours)]
+P_ELY_PWA = [P_ELY_PWA[t].X for t in range(nHours)]
+ElyOn   = [ElyOn[t].X   for t in range(nHours)]
+
+P_FC = [P_FC[t].X for t in range(nHours)]
+
+# P_FC_PWA = [P_FC_PWA[t].X for t in range(nHours)]
+# u_FC     = [u_FC[t].X     for t in range(nHours)]
+# i_FC     = [i_FC[t].X     for t in range(nHours)]
+# Vdot_FC  = [Vdot_FC[t].X  for t in range(nHours)]
+# z1       = [z1[t].X       for t in range(nHours)]
+# z2       = [z2[t].X       for t in range(nHours)]
+
+
+E_TANK  = [E_TANK[t].X  for t in range(nHours)]
+P_imp   = [P_imp[t].X   for t in range(nHours)]
+P_exp   = [P_exp[t].X   for t in range(nHours)]
 P_max_imp = [P_max_imp[month].X for month in months]
 
 if include_battery:
@@ -571,12 +768,16 @@ mdot_H2 = [mdot_H2[t].getValue() for t in range(nHours)]
 # For Gurobi var object
 Area_PV    = Area_PV.X
 S_ELY      = S_ELY.X
+S_C        = S_C.X
 S_TANK     = S_TANK.X
 S_FC       = S_FC.X
 S_HEX      = S_HEX.X
 S_HP       = S_HP.X
 high_usage = high_usage.X
 h_usage    = h_usage.X
+
+# cost_C   = cost_C.X
+cost_ELY = cost_ELY.X
 
 # For Gurobi LinExpr
 cost            = cost.getValue()
@@ -591,8 +792,28 @@ cost_WHR        = cost_WHR.getValue()
 
 mdot_H2_nom = mdot_H2_nom.getValue()
 P_PV_peak   = P_PV_peak.getValue()
-S_C         = S_C.getValue()
+# S_C         = S_C.getValue()
 S_PV        = S_PV.getValue()
+
+
+
+def retrieve_values(costs):
+    """Recursively retrieve values from a nested dictionary of Gurobi LinExpr objects and floats."""
+    retrieved_costs = {}
+    for key, value in costs.items():
+        if isinstance(value, dict):
+            # Recurse into the sub-dictionary
+            retrieved_costs[key] = retrieve_values(value)
+        elif hasattr(value, 'getValue'):
+            # Check if the object has the 'getValue' method typical of Gurobi LinExpr objects
+            retrieved_costs[key] = value.getValue()
+        else:
+            # Handle floats and other types that do not need the getValue method
+            retrieved_costs[key] = value
+    return retrieved_costs
+
+# Assuming costs_with_annuity is defined and some entries might be Gurobi LinExpr objects or floats
+# costs_with_annuity = retrieve_values(costs_with_annuity)
 
 all_costs = {
     "installation cost":  cost_inst,
@@ -608,6 +829,9 @@ all_costs = {
 #------------------------------------------------------------------------------
 # Post processing
 #------------------------------------------------------------------------------
+#Calculate the Benutzungsdauer
+BD = sum(P_imp)/np.mean(P_max_imp)
+
 
 S_PV_max = 1000*eta['PV']*Area_PV_max
 S_C_max = max(mdot_H2) * L_is_C / (eta["C"] * deltat)
@@ -625,7 +849,6 @@ export_price = electricity_prices['Elecricity export price [Rp.kWh]']
 electricity_price_imp = [(ip + gf) * 10 for ip, gf in zip(energy_price, grid_fee)]
 electricity_price_exp = [ep        * 10 for ep in export_price]
 #------------------------------------------------------------------------------
-
 # Function to calculate the volume of hydrogen gas based on temperature and pressure
 # Important notice: the coefficients A-E from the paper might not be the right ones this study.
 def hydrogen_tank_volume(p_out, T_amb, E_TANK, HHV, R_H2, M_H2, nHours):
@@ -682,20 +905,48 @@ VALCOE = cost / (sum(P_demand)/10**6)
 #------------------------------------------------------------------------------
 # Display results
 #------------------------------------------------------------------------------
-# Generate a dictionnary with the results
+simulation_report = {
+    "Choosen Timeline": timeline_choice,
+    "Chosen energy tariff": energy_tariff,
+    "Include battery in the simulation": include_battery,
+    "Grid Connectivity Factor (GCF) [%]": GCF,
+    "Components efficiencies": eta,
+    "Components unit prices": UP,
+    "Maximal Area covered by PV panels [m2]": Area_PV_max,
+    "H2 Storage Pressure [bar]": p_out
+}
 
+# Convert dictionary to DataFrame for better visualization
+df_simulation_report = pd.DataFrame(list(simulation_report.items()), columns=['Parameter', 'Value'])
+# print(df_simulation_report)
+
+# Create a figure and an axes to display the table with adjusted settings
+fig, ax = plt.subplots(figsize=(15, 4))  # Increased figure size for better content fit
+ax.axis('tight')
+ax.axis('off')
+table = ax.table(cellText=df_simulation_report.values, colLabels=df_simulation_report.columns, loc='center', cellLoc='left')
+table.auto_set_font_size(False)
+table.set_fontsize(16)  # Slightly reduced font size
+table.scale(1, 2)  # Adjusted cell scaling for better visibility and to prevent overlap
+plt.title('Simulation Report')
+plt.show()
+
+
+
+# Generate a dictionnary with the results
 if include_battery:
     variable_names = [
         'irradiance', 'P_demand', 'P_PV', 'P_imp', 'electricity_price_imp',
-        'P_exp', 'electricity_price_exp', 'P_ELY', 'mdot_H2', 'P_C', 'E_TANK',
-        'P_FC', 'E_b', 'P_ch', 'P_ds', 'm_cw_ELY', 'm_cw_FC', 'm_cw_HT',
-        'm_cw_MT', 'P_th_HT', 'P_th_MT', 'heat_zone3_35degC_demand_kWh',
-        'heat_zone3_60degC_demand_kWh'
+        'P_exp', 'electricity_price_exp', 'P_ELY', 'P_ElyOn', 'ElyOn', 
+        'P_ELY_PWA', 'mdot_H2', 'P_C', 'E_TANK','P_FC', 'E_b', 'P_ch', 'P_ds', 
+        'm_cw_ELY', 'm_cw_FC', 'm_cw_HT','m_cw_MT', 'P_th_HT', 'P_th_MT', 
+        'heat_zone3_35degC_demand_kWh','heat_zone3_60degC_demand_kWh'
         ]
 else:
     variable_names = [
         'irradiance', 'P_demand', 'P_PV', 'P_imp', 'electricity_price_imp',
-        'P_exp', 'electricity_price_exp', 'P_ELY', 'mdot_H2', 'P_C', 'E_TANK',
+        'P_exp', 'electricity_price_exp', 'P_ELY', 'P_ElyOn', 'ElyOn', 
+        'P_ELY_PWA', 'mdot_H2', 'P_C', 'E_TANK',
         'P_FC', 'm_cw_ELY', 'm_cw_FC', 'm_cw_HT',
         'm_cw_MT', 'P_th_HT', 'P_th_MT', 'heat_zone3_35degC_demand_kWh',
         'heat_zone3_60degC_demand_kWh'
@@ -716,6 +967,9 @@ for t in range(nHours):
     
     #HESS
     results['P_ELY'].append(P_ELY[t])
+    results['P_ElyOn'].append(P_ElyOn[t])
+    results['ElyOn'].append(ElyOn[t])
+    results['P_ELY_PWA'].append(P_ELY_PWA[t])
     results['mdot_H2'].append(mdot_H2[t])
     results['P_C'].append(P_C[t])
     results['E_TANK'].append(E_TANK[t])
@@ -744,6 +998,7 @@ results['status'] = m.status
 
 
 print("LCOE = {:.3f} € / MWh".format(LCOE))
+print("VALCOE = {:.3f} € / MWh".format(VALCOE))
 print("PV Area = {:.2f} square meters".format(Area_PV))
 
 if sum(mdot_H2) > 0:
@@ -754,23 +1009,60 @@ if sum(mdot_H2) > 0:
 #------------------------------------------------------------------------------
 # Import the plotting module
 
-from plotting_module import plot_power_generation, plot_component_sizes, plot_HESS_results, plot_battery_operation, plot_costs_and_prices, costs_pie_chart, plot_WHR
+from plotting_module import (plot_power_generation, plot_component_sizes, 
+                             plot_HESS_results, plot_battery_operation, 
+                             plot_costs_and_prices, costs_pie_chart, plot_WHR, 
+                             plot_ely_efficiency, pv_efficiency)
+
 
 # Call the plotting functions as needed
 # plot_power_generation(P_PV, P_imp, P_exp, df_input, nHours)
 plot_component_sizes(S_PV, S_PV_max, S_ELY, S_ELY_max, S_C, S_C_max, S_FC, S_FC_max, S_TANK, S_TANK_max)
-plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input)
+# pv_efficiency(df_pv)
+plot_HESS_results(P_PV, P_ELY, P_ELY_PWA, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input)
 plot_costs_and_prices(all_costs, df_input, electricity_price_imp, electricity_price_exp)
+plot_WHR(results)
 
 
 if include_battery:
     plot_battery_operation(P_demand, P_imp, P_ch, P_ds, E_b, bat_params, C_b_kWh, nHours)
 
+if sum(mdot_H2) > 0:
+    plot_ely_efficiency(P_ELY, P_ELY_PWA, S_ELY, nHours, x_bp_val, y_bp_val)
+    
+    inputPower = sorted([P_ELY[t] / S_ELY for t in range(nHours)])
+    outputPower = sorted([P_ELY_PWA[t] / S_ELY for t in range(nHours)])
+    eta_ELY = [(outp / inp) * 100 if inp != 0 else 0 for inp, outp in zip(inputPower, outputPower)]
+    
+
 # For plotly graphs
 fig_power_generation = plot_power_generation(results, df_input, nHours)
 fig_costs_pie_chart  = costs_pie_chart(all_costs)
 
-plot_WHR(results)
+# efficiency_fc = [P_FC_PWA[t] / u_fc[t] for t in range(nHours)] # Efficiency
+# inputPower_fc = [u_fc[t] / 1000 for t in range(nHours)]
+# current_fc = [i_fc[t] / 1000 for t in range(nHours)]
+
+# # Creating the plots
+# fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+# # Plotting u_fc over i_fc
+# ax1.plot(inputPower_fc, current_fc, '-o', label='PWA fit')  # Convert power to kW for the plot
+# ax1.set_xlabel('P [kW]')
+# ax1.set_ylabel('i [A]')
+# ax1.set_title('PWA approximation of the FC current')
+# ax1.legend()
+
+# # Plotting efficiency of the Fuel Cell
+# ax2.plot(inputPower_fc, efficiency_fc, '-o', label='Efficiency')  # Convert power to kW for the plot
+# ax2.set_xlabel('u_fc [kW]')
+# ax2.set_ylabel('Efficiency')
+# ax2.set_title('Efficiency of the Fuel Cell')
+# ax2.legend()
+
+# # Show the figure
+# plt.tight_layout()
+# plt.show()
 
 #------------------------------------------------------------------------------
 # Export results to excel 
