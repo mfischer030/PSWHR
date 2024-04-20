@@ -418,44 +418,59 @@ def costs_pie_chart(all_costs):
 #------------------------------------------------------------------------------
 # ELY PWA Plots
 #------------------------------------------------------------------------------
-def plot_ely_efficiency(P_ELY, P_ELY_PWA, S_ELY, nHours, x_bp_val, y_bp_val):
-    # Calculating and sorting input and output powers
+def plot_efficiencies(P_ELY, P_ELY_PWA, S_ELY, nHours, x_bp_val, y_bp_val, Vdot_FC_H2, i_FC, P_FC_in, P_FC, S_FC):
+    
+    # Calculating & sorting input & output powers and efficiencies for the Electrolyser
     inputPower  = sorted([P_ELY[t] / S_ELY for t in range(nHours)])
     outputPower = sorted([P_ELY_PWA[t] / S_ELY for t in range(nHours)])
     eta_ELY     = [(outp / inp) * 100 if inp != 0 else 0 for inp, outp in zip(inputPower, outputPower)]
+    eta_bp      = [(y / x) * 100 for x, y in zip(x_bp_val, y_bp_val)] 
 
-    # Compute eta_bp as the ratio of y_bp_val to x_bp_val
-    eta_bp = [(y / x)*100 for x, y in zip(x_bp_val, y_bp_val)]
+    # Calculate efficiency in % for the fuel cell
+    P_FC_in_kW = sorted([P_FC_in[t] / (1000) for t in range(nHours)])
+    P_FC_out_kW = sorted([P_FC[t] / (1000) for t in range(nHours)])
+    eta_FC = [(out / inp) * 100 if inp != 0 else 0 for inp, out in zip(P_FC_in_kW, P_FC_out_kW)]
 
-    # Create a figure and a set of subplots
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 6))  # Adjusted size for better visibility
+    # Create a figure with a 2x2 grid of subplots
+    fig, axs = plt.subplots(2, 2, figsize=(14, 12))
 
-    # Plotting the first subplot with a fixed color map range
+    # First subplot: Electrolyzer Input/Output Power Curve
     norm = mcolors.Normalize(vmin=40, vmax=60)
-    scatter = ax1.scatter(inputPower, outputPower, c=eta_ELY, cmap='viridis', norm=norm, marker='o')
-    cbar = fig.colorbar(scatter, ax=ax1)
-    cbar.set_label('Efficiency [%]', fontsize=15)
-    ax1.set_xlabel('Input Power', fontsize=20)
-    ax1.set_ylabel('Output Power', fontsize=20)
-    ax1.set_title('ELY Normalized Input/Output Power Curve', fontsize=20)
-    ax1.grid(True)
-    ax1.tick_params(axis='both', labelsize=18)
+    sc1 = axs[0, 0].scatter(inputPower, outputPower, c=eta_ELY, cmap='viridis', norm=norm, marker='o')
+    cbar1 = fig.colorbar(sc1, ax=axs[0, 0])
+    cbar1.set_label('Efficiency [%]', fontsize=15)
+    axs[0, 0].set_xlabel('Input Power', fontsize=12)
+    axs[0, 0].set_ylabel('Output Power', fontsize=12)
+    axs[0, 0].set_title('ELY Normalized Input/Output Power Curve', fontsize=14)
+    axs[0, 0].grid(True)
+    axs[0, 0].tick_params(axis='both', labelsize=10)
 
-    # Plotting the second subplot for Electrolyser Efficiency
-    ax2.scatter(inputPower, eta_ELY, color='blue', marker='o')
-    # Integrating the plot from the previous answer
-    ax2.plot(x_bp_val, eta_bp, marker='o', color='red', label='eta_bp')  # Red color for distinction
+    # Second subplot: Electrolyzer Efficiency vs. Input Power
+    axs[0, 1].scatter(inputPower, eta_ELY, color='blue', marker='o')
+    axs[0, 1].plot(x_bp_val, eta_bp, marker='o', color='red', label='eta_bp')  # Red color for distinction
+    axs[0, 1].set_xlabel('Input Power', fontsize=12)
+    axs[0, 1].set_ylabel('Efficiency [%]', fontsize=12)
+    axs[0, 1].set_xlim(0, 1.2)
+    axs[0, 1].set_ylim(35, 65)
+    axs[0, 1].set_title('Electrolyser Efficiency', fontsize=14)
+    axs[0, 1].grid(True)
+    axs[0, 1].tick_params(axis='both', labelsize=10)
+    axs[0, 1].legend()
 
-    ax2.set_xlabel('Input Power', fontsize=20)
-    ax2.set_ylabel('Efficiency [%]', fontsize=20)
-    ax2.set_xlim(0, 1.1)
-    ax2.set_ylim(35, 65)
-    ax2.set_title('Electrolyser Efficiency', fontsize=20)
-    ax2.grid(True)
-    ax2.tick_params(axis='both', labelsize=18)
+    # Third subplot: P_FC_in_kW vs P_FC_out_kW for the fuel cell (with colorbar)
+    norm = mcolors.Normalize(vmin=35, vmax=55)
+    sc2   = axs[1, 0].scatter(P_FC_in_kW, P_FC_out_kW, c=eta_FC, cmap='plasma', norm=norm)
+    cbar2 = fig.colorbar(sc2, ax=axs[1, 0])
+    cbar2.set_label('Efficiency [%]', fontsize=15)
+    axs[1, 0].set_xlabel('Input Power (kW)', fontsize=12)
+    axs[1, 0].set_ylabel('Output Power (kW)', fontsize=12)
+    axs[1, 0].tick_params(axis='both', labelsize=10)
+    axs[1, 0].set_ylim([0, 1.1*S_FC/1000])
+    axs[1, 0].set_title('FC Input/Output Power Curve', fontsize=14)
 
-    ax2.legend(['Electrolyser', 'N_bp'])
-
-    # Adjust layout and show plot
-    plt.tight_layout()
-    plt.show()
+    # Fourth subplot: i_FC vs Vdot_FC_H2 for the fuel cell (no colorbar)
+    axs[1, 1].scatter(Vdot_FC_H2, i_FC, c='blue')  # Using a solid color for simplicity
+    axs[1, 1].set_xlabel('Vdot_FC_H2', fontsize=12)
+    axs[1, 1].set_ylabel('i_FC', fontsize=12)
+    axs[1, 1].tick_params(axis='both', labelsize=10)
+    axs[1, 1].set_title('Fuel cell current to H2 volume flow', fontsize=14)
