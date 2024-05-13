@@ -99,7 +99,7 @@ for month in range(months):
 
 # imported power and average of imported peak
 total_imported_power = gp.quicksum(P_imp[i] for i in range(hours_in_year))
-avg_monthly_max = gp.quicksum(P_max_imp[j] for j in range(months)) / months
+avg_monthly_max      = gp.quicksum(P_max_imp[j] for j in range(months)) / months
 
 # BD constraints using binary variable and bigM
 model.addConstr(total_imported_power - threshold_BD * avg_monthly_max >= -M_BD * (1 - high_usage), "activate_high_usage")
@@ -116,6 +116,7 @@ cost_op = gp.quicksum(P_imp[i] * (c_imp_low * (1 - high_usage) + c_imp_high * hi
 
 # This is not linear 
 cost_peak= gp.quicksum(P_max_imp[month] * (c_peak_low * (1 - high_usage) + c_peak_high * high_usage) for month in range(months))
+
 model.setObjective(cost_inv + cost_op + cost_peak, GRB.MINIMIZE)
 
 # Solve the model
@@ -172,15 +173,15 @@ for month in range(months):
 avg_import_max_postprocessing= sum(import_max_postprocessing) / len(import_max_postprocessing)
 BD_postprocessing=energy_demand_year/avg_import_max_postprocessing
 
-charging_power = [P_ch[i].X for i in range(hours_in_year)]
+charging_power    = [P_ch[i].X for i in range(hours_in_year)]
 discharging_power = [P_disch[i].X for i in range(hours_in_year)]
-battery_energy = [E_b[i].X for i in range(hours_in_year + 1)]
+battery_energy    = [E_b[i].X for i in range(hours_in_year + 1)]
 selected_electricity_cost = [c_imp_low if high_usage.X <= 3500 else c_imp_high for _ in range(hours_in_year)]
 #grid_usage_binary = [grid_usage[i].X for i in range(hours_in_year)]
 #cumulative_hours_usage = np.cumsum(grid_usage_binary)
 selected_battery_capacity = C_b.X  # Get the optimized battery capacity
-cost_inv = C_b.X * UP_b / lifetime_b
-cost_op_value = cost_op.getValue()
+cost_inv        = C_b.X * UP_b / lifetime_b
+cost_op_value   = cost_op.getValue()
 cost_peak_value = cost_peak.getValue()  
 
 # First set of tile plots

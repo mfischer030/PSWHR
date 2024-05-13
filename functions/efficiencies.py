@@ -10,12 +10,10 @@ PWA approximation of PEM Electrolyser and Fuel Cell efficiency
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 # ------------------------------------------------------------------------------
 # PV
 # ------------------------------------------------------------------------------
 """Sources: De Soto W et al. (2006); Sun V et al. (2020); Dubey et al. (2013)"""
-
 
 def calculate_pv_efficiency(irradiance, T_amb):
     eta_PV_ref = 0.15  # Consider changing back to 0.21
@@ -40,7 +38,6 @@ def calculate_pv_efficiency(irradiance, T_amb):
 
     return eta_cell
 
-
 # ------------------------------------------------------------------------------
 # ELECTROLYSER
 # ------------------------------------------------------------------------------
@@ -50,7 +47,6 @@ efficiency of the electrolyser, using the HHV of hydrogen (iso LHV in
 previous script)
 for electrolyser of size 100kW, normalized
 """
-
 
 def pwa_ELY(N_bp):
     if N_bp == 2:
@@ -82,9 +78,9 @@ def pwa_ELY(N_bp):
                             0.526075556, 0.513723294, 0.502445365])
         qq_elec = np.array([-0.014614038, -0.007269492, -0.0003431, 0.007411952,
                             0.016104766, 0.025732536, 0.036266352])
+        
 
     return x_bp_val, y_bp_val, mm_elec, qq_elec
-
 
 # ------------------------------------------------------------------------------
 # FUEL CELL
@@ -114,23 +110,26 @@ def pwa_FC():
     N_cells_per_stack = 238
     N_cells           = N_stacks * N_cells_per_stack
 
-    c = N_cells *  M / (2 * F) * (3600 / 1000) # in [Nm3/Ah]
+    c = N_cells *  M / (z * F) * (3600 / 1000)          # in [Nm3/Ah]
     
     FC_param_struct = {
-        'P_FC_max'       : 100,                   # Maximum power in Watts
-        'P_FC_min'       : 10,                     # Minimum power in Watts
-        'FC_i_breakpoint': 123.054000168826,            #  Breakpoint current in A
-        'FC_p_breakpoint': 47.96736518 ,          # Breakpoint power in Watts (converted from kW)
-        'FC_slope_high_current': 3.31471893412921,      # Slope above breakpoint in [1/V]
-        'FC_slope_low_current' : 2.56536917754678,      # Slope below breakpoint in [1/V]
+        'P_FC_max'       : 100*1000,                         # Maximum power in [kW]
+        'P_FC_min'       : 10*1000,                          # Minimum power in [kW]
+        'FC_i_breakpoint': 123.054000168826,                 # Breakpoint current in A
+        'FC_p_breakpoint': 47.96736518*1000,                 # Breakpoint power in Watts (converted from kW)
+        'FC_slope_high_current': 3.31471893412921/1000,           # Slope above breakpoint in [1/kV]
+        'FC_slope_low_current' : 2.56536917754678/1000,           # Slope below breakpoint in [1/kV]
         'FC_i_to_VH2' : c,
-        'FC_dc_to_ac': 0.956183048244058                # relation between dc input and ac power delivered
+        'FC_dc_to_ac': 0.956183048244058                     # relation between dc input and ac power delivered
     }
     
     return FC_param_struct
 
 
-# Model Validation
+# FC Model Validation
+
+W_H2_HHV = 3.545*1000                       # The vol specific chemical energy (at STP) for HHV in [Wh/m3]
+
 FC_param_struct = pwa_FC()
 
 P_FC_out   = np.linspace(FC_param_struct['P_FC_min'], FC_param_struct['P_FC_max'])
@@ -142,20 +141,21 @@ for i in range(len(P_FC_out)):
     if FC_param_struct['P_FC_min'] <= P_FC_out[i] <= FC_param_struct['FC_p_breakpoint']:
         i_FC[i]       = FC_param_struct['FC_slope_low_current'] * P_FC_out[i]
         Vdot_FC_H2[i] = FC_param_struct['FC_i_to_VH2'] * i_FC[i]
-        P_FC_in[i]    = 3.545 * Vdot_FC_H2[i]
+        P_FC_in[i]    = W_H2_HHV * Vdot_FC_H2[i]
          
     elif FC_param_struct['FC_p_breakpoint'] < P_FC_out[i] <= FC_param_struct['P_FC_max']:
         i_FC[i]       = FC_param_struct['FC_slope_high_current'] * (P_FC_out[i] - FC_param_struct['FC_p_breakpoint']) + FC_param_struct['FC_i_breakpoint']
         Vdot_FC_H2[i] = FC_param_struct['FC_i_to_VH2'] * i_FC[i]
-        P_FC_in[i]    = 3.545 * Vdot_FC_H2[i]  # Corrected to index Vdot_FC_H2[i]
+        P_FC_in[i]    = W_H2_HHV * Vdot_FC_H2[i]  # Corrected to index Vdot_FC_H2[i]
         
     else:
         P_FC_in[i] = 0
     
 
 # Convert P_FC_out and P_FC_in to kW by dividing by 1000
-P_FC_out_kW = np.array(P_FC_out) 
-P_FC_in_kW = np.array(P_FC_in) 
+
+P_FC_out_kW = np.array(P_FC_out) / 1000
+P_FC_in_kW = np.array(P_FC_in) / 1000
 
 # Calculate efficiency in %
 efficiency = (P_FC_out_kW / P_FC_in_kW) * 100
@@ -177,7 +177,7 @@ ax2.tick_params(axis='both', which='major', labelsize=20)
 cb2 = fig.colorbar(sc2, ax=ax2)
 cb2.set_label('Efficiency (%)', fontsize=20)
 cb2.ax.tick_params(labelsize=20)
-ax2.set_ylim([0, 110])
+# ax2.set_ylim([0, 200])
 
 # Tight layout to make sure labels don't overlap and everything fits well
 plt.tight_layout()

@@ -12,6 +12,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import seaborn as sns
+from scipy.signal import gaussian, convolve
+from statsmodels.nonparametric.smoothers_lowess import lowess
+
 
 kWh2J = 3600*1000
 J2kWh = 1 / (3600*1000)
@@ -22,8 +25,8 @@ palette = sns.color_palette("husl", 8)  # You can choose a different palette if 
 
 # Increase font sizes for better readability on PowerPoint slides
 plt.rcParams.update({'font.size': 24})  # Adjust global font size
-plt.rcParams['axes.labelsize'] = 24
-plt.rcParams['axes.titlesize'] = 24
+plt.rcParams['axes.labelsize']  = 24
+plt.rcParams['axes.titlesize']  = 24
 plt.rcParams['xtick.labelsize'] = 24
 plt.rcParams['ytick.labelsize'] = 24
 plt.rcParams['legend.fontsize'] = 24
@@ -31,26 +34,66 @@ plt.rcParams['legend.fontsize'] = 24
 #------------------------------------------------------------------------------
 # Inputs and Demand plots
 #------------------------------------------------------------------------------
+def exponential_moving_average(data, alpha=0.01):
+    return pd.Series(data).ewm(alpha=alpha).mean().values
 
-def heat_demand_plot(heat_35degC_demand,heat_65degC_demand):
-    # Creating figure and subplots for heat demand
-    fig, axs = plt.subplots(2, 1, figsize=(20, 10), sharex=True)
-    fig.suptitle('Heat Demand 2022 NEST', fontsize=28)
+def gaussian_smoothing(data, window_size=50, std=10):
+    gaussian_window = gaussian(window_size, std=std)
+    gaussian_window /= gaussian_window.sum()
+    smoothed = convolve(data, gaussian_window, mode='same')
+    return smoothed
 
-    # Plot Heating demand at 35°C
-    axs[0].fill_between(range(len(heat_35degC_demand)), heat_35degC_demand, label='Heating Demand 35°C', color='orange', alpha=0.4)
-    axs[0].set_ylabel('Demand (kW)', fontsize=24)
-    axs[0].legend(loc='upper right', fontsize=24)
+def lowess_smoothing(data, frac=0.003): # Adjust frac to change smoothness level
+    return lowess(data, np.arange(len(data)), frac=frac, return_sorted=False)
 
-    # Plot DHW demand at 65°C
-    axs[1].fill_between(range(len(heat_65degC_demand)), heat_65degC_demand, label='Heat Demand 65°C', color='red', alpha=0.4)
-    axs[1].set_ylabel('Demand (kW)', fontsize=24)
-    axs[1].legend(loc='upper right', fontsize=24)
+def moving_average(data, window=150):
+    return np.convolve(data, np.ones(window)/window, mode='valid')
 
-    # Setting the xlabel for the last subplot
-    axs[1].set_xlabel('Time in Hours', fontsize=24)
+def plot_heat_demand(df_heat_demand):
+    # Set up the figure and axis
+    fig, axes = plt.subplots(nrows=2, figsize=(20, 10), sharex=True)
+    sns.set(style="whitegrid")
+    palette = sns.color_palette("Set2")
 
+    # Apply moving average smoothing
+    smooth_zone1_35 = lowess_smoothing(df_heat_demand['Heating_Zone1_35degC_kW'].values)
+    smooth_zone1_60 = lowess_smoothing(df_heat_demand['Heating_Zone1_60degC_kW'].values)
+    smooth_zone2_35 = lowess_smoothing(df_heat_demand['Heating_Zone2_35degC_kW'].values)
+    smooth_zone2_60 = lowess_smoothing(df_heat_demand['Heating_Zone2_60degC_kW'].values)
+    smooth_zone3_35 = lowess_smoothing(df_heat_demand['Heating_Zone3_35degC_kW'].values)
+    smooth_zone3_60 = lowess_smoothing(df_heat_demand['Heating_Zone3_60degC_kW'].values)
+    
+    # Adjust the day range for the smoothed data
+    smoothed_hours = np.arange(len(smooth_zone1_35))
+
+    # Stack plot for Space Heating Demand
+    axes[0].stackplot(smoothed_hours, smooth_zone3_35, smooth_zone1_35, smooth_zone2_35,
+                      labels=['Zone 3', 'Zone 1', 'Zone 2'],
+                      colors=[palette[1], palette[0], palette[3]],
+                      alpha=0.8, edgecolor='black')
+    axes[0].set_title('(a)', fontsize=26)
+    axes[0].set_xlabel('Time')
+    axes[0].set_ylabel('Demand (kWh)')
+    axes[0].legend(loc='upper center', fontsize=24)
+    axes[0].tick_params(axis='both', labelsize=22)
+    axes[0].grid(False)
+
+    # Stack plot for Domestic Hot Water Demand
+    axes[1].stackplot(smoothed_hours, smooth_zone3_60, smooth_zone1_60, smooth_zone2_60,
+                      labels=['Zone 3', 'Zone 1', 'Zone 2'],
+                      colors=[palette[1], palette[0], palette[3]],
+                      alpha=0.8, edgecolor='black')
+    axes[1].set_title('(b)', fontsize=26)
+    axes[1].set_xlabel('Time')
+    axes[1].set_ylabel('Demand (kWh)')
+    axes[1].legend(loc='upper right', fontsize=24)
+    axes[1].tick_params(axis='both', labelsize=22)
+    axes[1].grid(False)
+
+    # Automatically adjust the layout
     plt.tight_layout()
+
+    # Display the plot
     plt.show()
     
 # def plot_power_generation(P_PV, P_imp, P_exp, df_input, nHours):
@@ -67,6 +110,8 @@ def heat_demand_plot(heat_35degC_demand,heat_65degC_demand):
 
 #     plt.show()
 
+     
+
 def pv_efficiency(df_pv):
     # Plot
     plt.figure(figsize=[10,8])
@@ -82,6 +127,7 @@ def pv_efficiency(df_pv):
     
 
 def plot_power_generation(results, df_input, nHours):
+
     # Prepare the data
     df = pd.DataFrame(results)
     df_plot = pd.DataFrame({
@@ -91,37 +137,46 @@ def plot_power_generation(results, df_input, nHours):
         'Exported Power [kW]': [-p / 1000 for p in df['P_exp']],
         'Demand [kW]': [p / 1000 for p in df['P_demand']]
     })
-    
+
+    # Define colors from Seaborn's Set2 palette
+
+    colors = sns.color_palette("Set2", 5)  # Four colors for the four components
+
     # Calculate total sums in MWh for legend labels
-    total_pv_gen_MWh = df_plot['PV Generation [kW]'].sum() / 1000
+    total_pv_gen_MWh   = df_plot['PV Generation [kW]'].sum() / 1000
     total_imported_MWh = df_plot['Imported Power [kW]'].sum() / 1000
     total_exported_MWh = df_plot['Exported Power [kW]'].sum() / 1000
-    total_demand_MWh = df_plot['Demand [kW]'].sum() / 1000
-    
+    total_demand_MWh   = df_plot['Demand [kW]'].sum() / 1000
+
     labels = [
         f'PV Generation, total: {total_pv_gen_MWh:.2f} MWh',
         f'Imported Power, total: {total_imported_MWh:.2f} MWh',
         f'Exported Power, total: {total_exported_MWh:.2f} MWh',
         f'Demand, total: {total_demand_MWh:.2f} MWh'
     ]
-    
-    # Plot the data using Matplotlib
+
+
+    # Plot the data using Matplotlib and Seaborn colors
     plt.figure(figsize=(20, 10))  # Set the figure size
 
-    # Stack plot for PV Generation and Imported Power
-    plt.stackplot(df_plot['Time'], df_plot['PV Generation [kW]'], df_plot['Imported Power [kW]'],
-                  labels=labels[:2],
-                  colors=['orange', 'magenta'])
+    # # Stack plot for PV Generation and Imported Power                        # Nice for weekly or monthly representations
+    # plt.stackplot(df_plot['Time'],df_plot['Imported Power [kW]'], df_plot['PV Generation [kW]'], 
+    #               labels=labels[:2],
+    #               colors=colors[:2])
     
     # Fill the area for Exported Power
-    plt.fill_between(df_plot['Time'], 0, df_plot['Exported Power [kW]'], color='green', alpha=1)
-    
+    plt.fill_between(df_plot['Time'], 0, df_plot['PV Generation [kW]'], label=labels[0], color=colors[1], alpha=1)
+    plt.fill_between(df_plot['Time'], 0, df_plot['Imported Power [kW]'], label=labels[1], color=colors[0], alpha=1)
+    plt.fill_between(df_plot['Time'], 0, df_plot['Exported Power [kW]'], label=labels[2], color=colors[2], alpha=1)
+
     # Plot Demand with a dotted line
-    plt.plot('Time', 'Demand [kW]', data=df_plot, color='blue', linestyle='--', linewidth=2)
-    
+    # plt.plot('Time', 'Demand [kW]', data=df_plot, color=colors[3], linestyle='--', linewidth=2)
+
     # Update labels for the remaining lines
-    plt.plot([], [], color='green', label=labels[2])  # For Exported Power
-    plt.plot([], [], color='blue', linestyle='--', label=labels[3])  # For Demand
+    # plt.plot([], [], color=colors[1], label=labels[1])                  # For Imported Power
+    # plt.plot([], [], color=colors[0], label=labels[0])                  # For PV Power
+    # plt.plot([], [], color=colors[2], label=labels[2])                  # For Exported Power
+    plt.plot([], [], color=colors[3], linestyle='--', label=labels[3])    # For Demand
 
     # Style the plot
     plt.title('PV Generation, Imported, Exported Power, and Demand Overview', fontsize=24)
@@ -173,8 +228,8 @@ def plot_component_sizes(S_PV, S_PV_max, S_ELY, S_ELY_max, S_C, S_C_max, S_FC, S
 #------------------------------------------------------------------------------
 # System operation plots
 #------------------------------------------------------------------------------
-
-def plot_HESS_results(P_PV, P_ELY, P_ELY_PWA, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input):
+# def plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input):  # without PWA
+def plot_HESS_results(P_PV, P_ELY, P_ELY_PWA, S_ELY, S_ELY_max, P_FC, P_FC_in, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input): #if PWA
     """
     Plot main results including the size and operation of the electrolyzer (ELY),
     fuel cell (FC), and energy and TANK size over time.
@@ -195,7 +250,7 @@ def plot_HESS_results(P_PV, P_ELY, P_ELY_PWA, S_ELY, S_ELY_max, P_FC, S_FC, S_FC
 
     # Plot 1: Size and operation of the ELY
     ax1.plot(range(len(df_input)), [P_ELY[t] / 1000 for t in range(len(df_input))], label='P_ELY_in', color=palette[1])
-    ax1.plot(range(len(df_input)), [P_ELY_PWA[t] / 1000 for t in range(len(df_input))], label='P_ELY_out', color=palette[4])
+    # ax1.plot(range(len(df_input)), [P_ELY_PWA[t] / 1000 for t in range(len(df_input))], label='P_ELY_out', color=palette[4])
     ax1.plot(range(len(df_input)), [S_ELY / 1000] * len(df_input), 
              label=f'ELY size: {S_ELY / 1000:.2f} kW', linestyle='--', color=palette[3])
     # ax1.set_xlabel('Time [h]')
@@ -207,7 +262,8 @@ def plot_HESS_results(P_PV, P_ELY, P_ELY_PWA, S_ELY, S_ELY_max, P_FC, S_FC, S_FC
     ax1.legend(loc='upper right', fontsize=24)
 
     # Plot 2: Size and operation of the FC
-    ax2.plot(range(len(df_input)), [P_FC[t] / 1000 for t in range(len(df_input))], label='FC', color=palette[0])
+    # ax2.plot(range(len(df_input)), [P_FC_in[t] / 1000 for t in range(len(df_input))], label='P_FC_in', color=palette[0])
+    ax2.plot(range(len(df_input)), [P_FC[t]    / 1000 for t in range(len(df_input))], label='P_FC_out', color=palette[6])
     ax2.plot(range(len(df_input)), [S_FC / 1000] * len(df_input), 
              label=f'FC size: {S_FC/ 1000:.2f} kW', linestyle=':', color=palette[2])
     # ax2.set_xlabel('Time [h]')
@@ -220,12 +276,12 @@ def plot_HESS_results(P_PV, P_ELY, P_ELY_PWA, S_ELY, S_ELY_max, P_FC, S_FC, S_FC
     # Plot 3: Energy and TANK Size
     ax3.plot(range(len(df_input)), [E_TANK[t] / 3600000 for t in range(len(df_input))], label='TANK', color=palette[5])
     ax3.plot(range(len(df_input)), [S_TANK / 3600000] * len(df_input), 
-             label=f'H2-TANK size: {S_TANK/ 3600000:.2f} kWh', linestyle='-.', color=palette[6])
+             label=f'H2-TANK size: {S_TANK/ (39.39*3600000):.2f} kgH2', linestyle='-.', color=palette[6])  
     ax3.set_xlabel('Time [h]', fontsize=24)
     ax3.set_ylabel('Energy [kWh]', fontsize=24)
     # ax3.set_ylim([0, (S_TANK_max * 1.1) / 3600000])
     # ax3.set_ylim([0, S_TANK / 3600000 * 1.1])
-    ax3.set_ylim([0, 5000])
+    ax3.set_ylim([0, 53000])
     ax3.tick_params(axis='both', which='major', labelsize=24)
     ax3.legend(loc='upper right', fontsize=24)
 
@@ -291,8 +347,8 @@ def plot_WHR(results):
     # Divide specified columns by 1000 to convert values from Watts to Kilowatts
     df['P_th_HT'] = df['P_th_HT'] / 1000
     df['P_th_MT'] = df['P_th_MT'] / 1000
-    df['P_ELY'] = df['P_ELY'] / 1000
-    df['P_FC'] = df['P_FC'] / 1000
+    df['P_ELY']   = df['P_ELY'] / 1000
+    df['P_FC']   = df['P_FC'] / 1000
     
     # Create a figure with 2 rows and 1 column, adjusting subplot positions
     fig = make_subplots(rows=2, cols=1,
@@ -304,8 +360,8 @@ def plot_WHR(results):
     fig.add_trace(go.Scatter(x=df['ts'], y=df['P_th_MT'], name='P_th_MT', stackgroup='one'), row=1, col=1)
     df['P_ELY_plus_P_FC'] = df['P_ELY'] + df['P_FC']  # Sum already in Kilowatts after division
     fig.add_trace(go.Scatter(x=df['ts'], y=df['P_ELY_plus_P_FC'], name='P_ELY + P_FC', mode='lines+markers'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df['ts'], y=df['heat_zone3_35degC_demand_kWh'], name='Heat Demand Zone 3 @ 35°C', mode='lines', line=dict(dash='dot')), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df['ts'], y=df['heat_zone3_60degC_demand_kWh'], name='Heat Demand Zone 3 @ 60°C', mode='lines', line=dict(dash='dot')), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['z3_35degC_kWh'], name='Heat Demand Zone 3 @ 35°C', mode='lines', line=dict(dash='dot')), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df['ts'], y=df['z3_60degC_kWh'], name='Heat Demand Zone 3 @ 60°C', mode='lines', line=dict(dash='dot')), row=1, col=1)
 
     # Second subplot for Cooling Water Mass Flows in Kilograms per second
     fig.add_trace(go.Scatter(x=df['ts'], y=df['m_cw_ELY'], name='m_cw_ELY', mode='lines'), row=2, col=1)
@@ -370,10 +426,11 @@ def plot_costs_and_prices(all_costs, df_input, electricity_price_imp, electricit
 
     # Define bars and labels for the legend
     bars_and_labels = [
-        ("Exported Electricity", -all_costs["exported electricity"] / 1000, palette[2]),
-        ("Revenues WHR", -all_costs["revenues WHR"] / 1000, palette[3]),
-        ("Imported Electricity", all_costs["imported electricity"] / 1000, palette[4]),
-        ("Grid Use Fees", all_costs["grid use fees"] / 1000, palette[5])
+        ("Exported Electricity", -all_costs["operational cost"]["exported electricity"] / 1000, palette[2]),
+        ("Revenues WHR", -all_costs["revenues WHR"] / 1000, palette[6]),
+        ("Imported Electricity", all_costs["operational cost"]["imported electricity"] / 1000, palette[4]),
+        ("Grid Use Fees", all_costs["operational cost"]["grid use fees"]["grid_kWh"] / 1000, palette[5]),
+        ("Taxes & Levies", all_costs["operational cost"]["taxes & levies"] / 1000, palette[7])
     ]
 
     # Plot operational cost bars with cumulative stacking
@@ -387,8 +444,8 @@ def plot_costs_and_prices(all_costs, df_input, electricity_price_imp, electricit
             cumulative_positive += value
 
     # Plot other costs without adding to legend (skip label argument)
-    ax2.bar(0, all_costs["installation cost"] / 1000, bar_width, color='skyblue')
-    ax2.bar(2, all_costs["maintenance cost"] / 1000, bar_width, color='lightgreen')
+    ax2.bar(0, all_costs["installation cost"]["total"] / 1000, bar_width, color='skyblue')
+    ax2.bar(2, all_costs["maintenance cost"]["total"] / 1000, bar_width, color='lightgreen')
     ax2.bar(3, all_costs["TAC"] / 1000, bar_width, color='salmon')
 
     ax2.set_ylabel('Cost [k€/y]', fontsize=28)
@@ -398,14 +455,14 @@ def plot_costs_and_prices(all_costs, df_input, electricity_price_imp, electricit
 
     # Customize legend to only include the four operational cost parameters
     handles, labels = ax2.get_legend_handles_labels()
-    ax2.legend(handles[-4:], labels[-4:], fontsize=20, loc='upper left')  # Adjust to ensure only the last four items are included
+    ax2.legend(handles[-5:], labels[-5:], fontsize=20, loc='upper left')  # Adjust to ensure only the last four items are included
 
     plt.tight_layout()
     plt.show()
 
 # Function to calculate operational cost and create pie chart data
 def costs_pie_chart(all_costs):
-    operational_cost = all_costs['imported electricity'] + all_costs['grid use fees'] - all_costs['exported electricity'] - all_costs['revenues WHR']
+    operational_cost = all_costs['imported electricity'] + all_costs['grid use fees'] + all_costs['taxes & levies']  - all_costs['exported electricity'] - all_costs['revenues WHR']
     pie_chart_data = {
         'Categories': ['Installation Cost', 'Operational Cost', 'Maintenance Cost'],
         'Values': [all_costs['installation cost'], operational_cost, all_costs['maintenance cost']]
@@ -418,59 +475,59 @@ def costs_pie_chart(all_costs):
 #------------------------------------------------------------------------------
 # ELY PWA Plots
 #------------------------------------------------------------------------------
-def plot_efficiencies(P_ELY, P_ELY_PWA, S_ELY, nHours, x_bp_val, y_bp_val, Vdot_FC_H2, i_FC, P_FC_in, P_FC, S_FC):
+def plot_efficiencies(P_ELY, P_ELY_PWA, S_ELY, nHours, x_bp_val, y_bp_val_scaled, Vdot_FC_H2, i_FC, P_FC_in, P_FC, S_FC):
+    sns.set_theme(style="whitegrid")
     
     # Calculating & sorting input & output powers and efficiencies for the Electrolyser
     inputPower  = sorted([P_ELY[t] / S_ELY for t in range(nHours)])
     outputPower = sorted([P_ELY_PWA[t] / S_ELY for t in range(nHours)])
     eta_ELY     = [(outp / inp) * 100 if inp != 0 else 0 for inp, outp in zip(inputPower, outputPower)]
-    eta_bp      = [(y / x) * 100 for x, y in zip(x_bp_val, y_bp_val)] 
+    eta_bp      = [(y / x) * 100 for x, y in zip(x_bp_val, y_bp_val_scaled)] 
 
     # Calculate efficiency in % for the fuel cell
-    P_FC_in_kW = sorted([P_FC_in[t] / (1000) for t in range(nHours)])
-    P_FC_out_kW = sorted([P_FC[t] / (1000) for t in range(nHours)])
-    eta_FC = [(out / inp) * 100 if inp != 0 else 0 for inp, out in zip(P_FC_in_kW, P_FC_out_kW)]
+    P_FC_in_kW  = sorted([P_FC_in[t] / (S_FC) for t in range(nHours)])
+    P_FC_out_kW = sorted([P_FC[t]    / (S_FC) for t in range(nHours)])
+    eta_FC      = [(out / inp) * 100 if inp != 0 else 0 for inp, out in zip(P_FC_in_kW, P_FC_out_kW)]
 
     # Create a figure with a 2x2 grid of subplots
-    fig, axs = plt.subplots(2, 2, figsize=(14, 12))
+    fig, axs = plt.subplots(2, 2, figsize=(18, 17))
 
     # First subplot: Electrolyzer Input/Output Power Curve
-    norm = mcolors.Normalize(vmin=40, vmax=60)
+    norm = mcolors.Normalize(vmin=57, vmax=67)
     sc1 = axs[0, 0].scatter(inputPower, outputPower, c=eta_ELY, cmap='viridis', norm=norm, marker='o')
     cbar1 = fig.colorbar(sc1, ax=axs[0, 0])
-    cbar1.set_label('Efficiency [%]', fontsize=15)
-    axs[0, 0].set_xlabel('Input Power', fontsize=12)
-    axs[0, 0].set_ylabel('Output Power', fontsize=12)
-    axs[0, 0].set_title('ELY Normalized Input/Output Power Curve', fontsize=14)
+    cbar1.set_label('Efficiency [%]', fontsize=20)
+    axs[0, 0].set_xlabel('Input Power', fontsize=20)
+    axs[0, 0].set_ylabel('Output Power', fontsize=20)
+    axs[0, 0].set_title('ELY Normalized Input/Output Power Curve', fontsize=20)
     axs[0, 0].grid(True)
-    axs[0, 0].tick_params(axis='both', labelsize=10)
+    axs[0, 0].tick_params(axis='both', labelsize=20)
 
     # Second subplot: Electrolyzer Efficiency vs. Input Power
     axs[0, 1].scatter(inputPower, eta_ELY, color='blue', marker='o')
     axs[0, 1].plot(x_bp_val, eta_bp, marker='o', color='red', label='eta_bp')  # Red color for distinction
-    axs[0, 1].set_xlabel('Input Power', fontsize=12)
-    axs[0, 1].set_ylabel('Efficiency [%]', fontsize=12)
+    axs[0, 1].set_xlabel('Input Power', fontsize=20)
+    axs[0, 1].set_ylabel('Efficiency [%]', fontsize=20)
     axs[0, 1].set_xlim(0, 1.2)
-    axs[0, 1].set_ylim(35, 65)
-    axs[0, 1].set_title('Electrolyser Efficiency', fontsize=14)
+    axs[0, 1].set_ylim(40, 70)
+    axs[0, 1].set_title('Electrolyser Efficiency', fontsize=20)
     axs[0, 1].grid(True)
-    axs[0, 1].tick_params(axis='both', labelsize=10)
+    axs[0, 1].tick_params(axis='both', labelsize=20)
     axs[0, 1].legend()
 
     # Third subplot: P_FC_in_kW vs P_FC_out_kW for the fuel cell (with colorbar)
-    norm = mcolors.Normalize(vmin=35, vmax=55)
+    norm = mcolors.Normalize(vmin=45, vmax=55)
     sc2   = axs[1, 0].scatter(P_FC_in_kW, P_FC_out_kW, c=eta_FC, cmap='plasma', norm=norm)
     cbar2 = fig.colorbar(sc2, ax=axs[1, 0])
-    cbar2.set_label('Efficiency [%]', fontsize=15)
-    axs[1, 0].set_xlabel('Input Power (kW)', fontsize=12)
-    axs[1, 0].set_ylabel('Output Power (kW)', fontsize=12)
-    axs[1, 0].tick_params(axis='both', labelsize=10)
-    axs[1, 0].set_ylim([0, 1.1*S_FC/1000])
-    axs[1, 0].set_title('FC Input/Output Power Curve', fontsize=14)
+    cbar2.set_label('Efficiency [%]', fontsize=20)
+    axs[1, 0].set_xlabel('Input Power (kW)', fontsize=20)
+    axs[1, 0].set_ylabel('Output Power (kW)', fontsize=20)
+    axs[1, 0].tick_params(axis='both', labelsize=20)
+    axs[1, 0].set_title('FC Input/Output Power Curve', fontsize=20)
 
     # Fourth subplot: i_FC vs Vdot_FC_H2 for the fuel cell (no colorbar)
     axs[1, 1].scatter(Vdot_FC_H2, i_FC, c='blue')  # Using a solid color for simplicity
-    axs[1, 1].set_xlabel('Vdot_FC_H2', fontsize=12)
-    axs[1, 1].set_ylabel('i_FC', fontsize=12)
-    axs[1, 1].tick_params(axis='both', labelsize=10)
-    axs[1, 1].set_title('Fuel cell current to H2 volume flow', fontsize=14)
+    axs[1, 1].set_xlabel('Vdot_FC_H2', fontsize=20)
+    axs[1, 1].set_ylabel('i_FC', fontsize=20)
+    axs[1, 1].tick_params(axis='both', labelsize=20)
+    axs[1, 1].set_title('Fuel cell current to H2 volume flow', fontsize=20)

@@ -21,6 +21,13 @@ def paths_configuration(user):
         function_path = r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\PSWHR\PSWHR\functions'
         export_path = r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\results'
     
+    elif user == 'maxime_EMPA_WS':
+        input_path  = r'C:\Users\fism\Desktop\PSWHR\input_data\Rubigen_2019-2022_irradiance_Hourly.xlsx'
+        demand_path = r'C:\Users\fism\Desktop\PSWHR\input_data\200923_Lastang 2015-2020_Rubigen.xlsx'
+        heat_path = r'C:\Users\fism\Desktop\PSWHR\input_data\Heat_Inputs_year_2022.xlsx'
+        function_path = r'C:\Users\fism\Desktop\PSWHR\functions'
+        export_path = r'C:\Users\fism\Desktop\PSWHR\results'
+    
     elif user == 'christian':
         input_path  = r'C:\Users\peter_c\Desktop\test\PSWHR\input_data\Rubigen_2019-2022_irradiance_Hourly.xlsx',
         demand_path = r'C:\Users\peter_c\Desktop\test\PSWHR\input_data\200923_Lastang 2015-2020_Rubigen.xlsx'

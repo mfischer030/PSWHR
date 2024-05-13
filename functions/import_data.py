@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 Created on Thu Jan 11 17:01:35 2024
+@author: Maxime Fischer 
 
-@author: fism
+This module imports the solar irradiance for Rubigen from the 
+Rubigen_2019-2022_irradiance_Hourly.xlsx file as well as the power demand from 
+the tesla supercharger station from 200923_Lastang 2015-2020_Rubigen.xlsx
 """
 import pandas as pd
 import numpy as np
@@ -13,6 +16,7 @@ import io
 # Set seaborn color palettes
 sns.set_palette("Accent")
 palette = sns.color_palette()
+
 
 # input_path  = r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\inputData\input_data\Rubigen_2019-2022_irradiance_Hourly.xlsx'
 # demand_path = r'C:\Users\fism\Desktop\MA_thesis\02_modeling_and_optimization\inputData\demand_data\200923_Lastang 2015-2020_Rubigen.xlsx'
@@ -45,8 +49,7 @@ class WeeklyTimeline:
         
         return self.irradiance, self.P_demand, self.T_amb, df_input, df_demand, df_heat_demand
     
-        
-
+    
 class MonthlyTimeline:
     def __init__(self, input_path, demand_path, season):
         self.input_path = input_path
@@ -76,10 +79,11 @@ class MonthlyTimeline:
 
 
 class YearlyTimeline:
-    def __init__(self, input_path, demand_path, year):
+    def __init__(self, input_path, demand_path, year, demand_choice='Normal'):
         self.input_path = input_path
         self.demand_path = demand_path
         self.year = year  # Added to specify the year
+        self.demand_choice = demand_choice
         self.irradiance = None
         self.T_amb = None
         self.P_demand = None
@@ -90,7 +94,15 @@ class YearlyTimeline:
         self.irradiance = df_input['ALLSKY_SFC_SW_DWN [Wh/m2]'].values  # yearly solar irradiance in [Wh/m2]
         self.T_amb = df_input['T2M [°C]'].values
         
-        df_demand = pd.read_excel(self.demand_path, sheet_name='2019')
+        # Choose the appropriate sheet for demand data based on user's choice if year is 2019
+        if self.year == '2019':
+            if self.demand_choice == 'Normal':
+                df_demand = pd.read_excel(self.demand_path, sheet_name='2019')
+            elif self.demand_choice == 'Increased':
+                df_demand = pd.read_excel(self.demand_path, sheet_name='30%BEV+heavyFri&Sat')
+        else:
+            df_demand = pd.read_excel(self.demand_path, sheet_name='2019')  # Default to '2019' sheet for other years
+        
         # Aggregate demand from 15min to 1h timesteps by means
         self.P_demand = df_demand.groupby(df_demand.index // 4)['Wirkleistung [kW]'].mean().values
         self.P_demand = (self.P_demand * 1000)  # Power demand in [W]
@@ -101,6 +113,78 @@ class YearlyTimeline:
         df_heat_demand = pd.read_excel(self.demand_path, sheet_name='heat_year')
         
         return self.irradiance, self.P_demand, self.T_amb, df_input, df_demand, df_heat_demand
+
+# Declare as global variables
+irradiance = None
+P_demand   = None
+
+
+def get_data(input_path, demand_path):
+    global irradiance, P_demand
+    timeline_choice = input("Enter 'week', 'month' or 'year' for the timeline: ")
+    season_choice = None  # Initialize season_choice to ensure it's always defined
+    
+    if timeline_choice.lower() == 'week' or timeline_choice.lower() == 'month':
+        season_choice = input("Do you want to consider a 'summer' or 'winter' season? ")
+        while season_choice not in ['summer', 'winter']:
+            print("Invalid season choice. Please choose 'summer' or 'winter'.")
+            season_choice = input("Do you want to consider a 'summer' or 'winter' season? ")
+        
+        if timeline_choice.lower() == 'week':
+            weekly_timeline = WeeklyTimeline(input_path, demand_path, season_choice)
+            irradiance, P_demand, T_amb, df_input, df_demand, df_heat_demand = weekly_timeline.import_data()
+            plot_data(weekly_timeline, f'{season_choice.capitalize()} Week 2019')
+            
+        elif timeline_choice.lower() == 'month':
+            monthly_timeline = MonthlyTimeline(input_path, demand_path, season_choice)
+            irradiance, P_demand, T_amb, df_input, df_demand, df_heat_demand = monthly_timeline.import_data()
+            plot_data(monthly_timeline, f'{season_choice.capitalize()} Month 2019')
+    
+    elif timeline_choice.lower() == 'year':
+        valid_years = ['2019', '2020', '2021', '2022']
+        year_choice = input("Enter the year you want to consider (2019, 2020, 2021, 2022): ")
+        while year_choice not in valid_years:
+            print("Invalid year choice. Please choose from 2019, 2020, 2021, or 2022.")
+            year_choice = input("Enter the year you want to consider (2019, 2020, 2021, 2022): ")
+
+        
+
+        demand_choice = 'Normal'  # Default to normal unless specified otherwise
+        if year_choice == '2019':
+            demand_choice = input("Enter 'Normal' or 'Increased' for the demand scenario: ")
+            while demand_choice not in ['Normal', 'Increased']:
+                print("Invalid demand choice. Please choose 'Normal' or 'Increased'.")
+                demand_choice = input("Enter 'Normal' or 'Increased' for the demand scenario: ")
+
+
+        yearly_timeline = YearlyTimeline(input_path, demand_path, year_choice, demand_choice)
+        irradiance, P_demand, T_amb, df_input, df_demand, df_heat_demand = yearly_timeline.import_data()
+        
+    # elif timeline_choice.lower() == 'year':
+    #     valid_years = ['2019', '2020', '2021', '2022']
+    #     year_choice = input("Enter the year you want to consider (2019, 2020, 2021, 2022): ")
+    #     while year_choice not in valid_years:
+    #         print("Invalid year choice. Please choose from 2019, 2020, 2021, or 2022.")
+    #         year_choice = input("Enter the year you want to consider (2019, 2020, 2021, 2022): ")
+            
+    #     yearly_timeline = YearlyTimeline(input_path, demand_path, year_choice)
+    #     irradiance, P_demand, T_amb, df_input, df_demand, df_heat_demand = yearly_timeline.import_data()
+       
+        plot_data(yearly_timeline, f'{year_choice}')
+        
+    else:
+        print("Invalid timeline choice. Please enter 'week', 'year', or 'month'.")
+    
+    return irradiance, P_demand, T_amb, df_input, df_demand, df_heat_demand, timeline_choice, season_choice
+
+    
+
+if __name__ == "__main__":
+    get_data()
+
+#------------------------------------------------------------------------------
+# PLOTTING
+#------------------------------------------------------------------------------
 
 # DON'T DELETE THIS ALTERNATIVE PLOT!!!!---------------------------------------
 # def plot_data(timeline, title_prefix):
@@ -158,51 +242,3 @@ def plot_data(timeline, title_prefix):
     plt.grid(False)
     plt.tight_layout()
     plt.show()
-
-
-# Declare as global variables
-irradiance = None
-P_demand   = None
-
-
-def get_data(input_path, demand_path):
-    global irradiance, P_demand
-    timeline_choice = input("Enter 'week', 'month' or 'year' for the timeline: ")
-    season_choice = None  # Initialize season_choice to ensure it's always defined
-    
-    if timeline_choice.lower() == 'week' or timeline_choice.lower() == 'month':
-        season_choice = input("Do you want to consider a 'summer' or 'winter' season? ")
-        while season_choice not in ['summer', 'winter']:
-            print("Invalid season choice. Please choose 'summer' or 'winter'.")
-            season_choice = input("Do you want to consider a 'summer' or 'winter' season? ")
-        
-        if timeline_choice.lower() == 'week':
-            weekly_timeline = WeeklyTimeline(input_path, demand_path, season_choice)
-            irradiance, P_demand, T_amb, df_input, df_demand, df_heat_demand = weekly_timeline.import_data()
-            plot_data(weekly_timeline, f'{season_choice.capitalize()} Week 2019')
-            
-        elif timeline_choice.lower() == 'month':
-            monthly_timeline = MonthlyTimeline(input_path, demand_path, season_choice)
-            irradiance, P_demand, T_amb, df_input, df_demand, df_heat_demand = monthly_timeline.import_data()
-            plot_data(monthly_timeline, f'{season_choice.capitalize()} Month 2019')
-        
-    elif timeline_choice.lower() == 'year':
-        valid_years = ['2019', '2020', '2021', '2022']
-        year_choice = input("Enter the year you want to consider (2019, 2020, 2021, 2022): ")
-        while year_choice not in valid_years:
-            print("Invalid year choice. Please choose from 2019, 2020, 2021, or 2022.")
-            year_choice = input("Enter the year you want to consider (2019, 2020, 2021, 2022): ")
-            
-        yearly_timeline = YearlyTimeline(input_path, demand_path, year_choice)
-        irradiance, P_demand, T_amb, df_input, df_demand, df_heat_demand = yearly_timeline.import_data()
-        plot_data(yearly_timeline, f'{year_choice}')
-        
-    else:
-        print("Invalid timeline choice. Please enter 'week', 'year', or 'month'.")
-    
-    return irradiance, P_demand, T_amb, df_input, df_demand, df_heat_demand, timeline_choice, season_choice
-
-    
-
-if __name__ == "__main__":
-    get_data()
