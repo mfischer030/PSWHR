@@ -47,7 +47,7 @@ energy_tariff = "Grey" # Choose from "Green","Blue","Grey"
 include_battery = False
 
 # Choose the "grid-connectivity" of the model: Grid Connectivity Factor
-GCF = 10  # [%] of power which can be imported from the grid from the total energy demand
+GCF = 100  # [0-100%] of power which can be imported from the grid from the total energy demand
 
 # Choose Hydrogen storage pressure in [bar] (30 bar = H2 outlet pressure from ELY => no compressor needed)
 H2_storage_pressure = 30                                                     
@@ -59,8 +59,12 @@ discountRate = 0.07                                             # [-] Annual Dis
 N_bp = 3
 
 # Define wether you want to consider current (1), midterm (2) or future (3) efficiencies and Unit prices for components
-efficiency_level = 3
-UP_level         = 3 
+efficiency_level = 1
+UP_level         = 1
+
+# Maximal PV Area 
+landuseCoefPV = 0.8                  # Determines how much of the disposal land can actually be used for PV power generation
+Area_PV_max   = landuseCoefPV * 5000 # Maximum PV area [m2] 
 
 # Import functions and modules ------------------------------------------------
 
@@ -198,7 +202,7 @@ elif UP_level == 2:
     UP = {'PV': 0.8,'BAT': 0.5/3600,'ELY': 1,'C': 14.74,'TANK': 8.25/(3.6*10**6), 'FC': 1.473145,'HP': 0.238, 'HEX': 221}              # Mid-Term
 elif UP_level == 3: 
     UP = {'PV': 0.8,'BAT': 0.5/3600,'ELY': 0.556,'C': 9.82, 'TANK': 7.34/(3.6*10**6),'FC': 1.10486,'HP': 0.200, 'HEX': 100}            # Ultimate
-    # UP  =  {'PV': 1,'BAT': 1,'ELY': 1,'C': 1, 'TANK': 1,'FC': 1,'HP': 1, 'HEX': 1}
+    # UP  =  {'PV': 0.8,'BAT': 0,'ELY': 0,'C': 0, 'TANK': 0,'FC': 0,'HP': 0, 'HEX': 0}
 
 
 
@@ -245,10 +249,6 @@ bat_params = {
 #------------------------------------------------------------------------------
 # Defining maximal SIZES of the components
 #------------------------------------------------------------------------------
-
-# Maximal PV Area 
-landuseCoefPV = 0.8                  # Determines how much of the disposal land can actually be used for PV power generation
-Area_PV_max   = landuseCoefPV * 5000 # Maximum PV area [m2] 
 
 # Electrolyser max and min nominal power (W)   
 S_ELY_max = 1000*1000    # Maximal Electrolyzer size in [W]
@@ -307,7 +307,7 @@ COP        = 0.5 * COP_carnot                          # Real COP, as in Tiktak
 scenario_choice = input("Enter 'grid' for grid-connected scenario or 'off-grid' for an off-grid scenario: ").lower()
 # Check the user's choice and set relevant parameters accordingly
 if scenario_choice == 'grid':
-    P_imp_ub = 10000000                 # Upper bound for P_imp in grid-connected scenario, Trafo limit is 1MW
+    P_imp_ub = 1000000                 # Upper bound for P_imp in grid-connected scenario, Trafo limit is 1MW
     P_exp_ub = 1000000                  # Upper bound for P_exp in grid-connected scenario, Trafo limit is 1MW
 elif scenario_choice == 'off-grid':
     P_imp_ub = 0                       # No imported power in off-grid scenario
@@ -537,9 +537,9 @@ avg_monthly_max      = gp.quicksum(P_max_imp) / len(months)
 # Constraint: Calculate BD
 m.addConstr(BD *  avg_monthly_max == total_imported_power, "Calculate_BD")
 
-# # Big M method constraints
-M = 10000
-epsilon=0.001
+# # # Big M method constraints
+# M = 10000
+# epsilon=0.001
 
 # m.addConstr(BD - 3500 >= -M * (1 - high_usage), "BD_Less_Than_3500")
 # m.addConstr(BD - 3500 <= M * high_usage, "BD_More_Than_3500")
@@ -889,10 +889,13 @@ simulation_report = {
     "Components unit prices": UP_level,
     "Maximal PV Area (m2)": Area_PV_max,
     "Maximal ELY Capacity (kW)": S_ELY_max/1000,
+    "Maximal TANK Capacity (kgH2)": f"{S_TANK_H2_max:.2f}",
     "Maximal FC Capacity (kW)": S_FC_max/1000,
+    "Maximal BAT Capacity (kWh)": f"{bat_params['C_b_max']*J2kWh:.2f}",
     "H2 Storage Pressure (bar)": p_out,
     "LCOE in CHF/MWh": f"{LCOE:.2f}",
-    "Benutzungsdauer": f"{Benutzungsdauer:.2f}"
+    "Benutzungsdauer": f"{Benutzungsdauer:.2f}",
+    "Maximal Import Peak in (kW)": f"{max(P_imp)/1000:.2f}" 
 }
 
 # Convert dictionary to DataFrame for better visualization
@@ -933,25 +936,6 @@ else:
         'z1_35degC_kWh', 'z1_60degC_kWh', 'z2_35degC_kWh', 'z2_60degC_kWh',
         'z3_35degC_kWh', 'z3_60degC_kWh'
         ]
-
-# else:
-#     variable_names = [
-#         'irradiance', 'P_demand', 'P_PV', 'P_imp', 'electricity_price_imp',
-#         'P_exp', 'electricity_price_exp', 
-#         'P_ELY', 'mdot_H2', 'P_C','E_TANK', 'P_FC_in', 'P_FC', 'i_FC', 'Vdot_FC_H2',
-#         'm_cw_ELY', 'm_cw_FC', 'm_cw_HT', 'm_cw_MT', 'P_th_HT', 'P_th_MT',
-#         'heat_zone3_35degC_demand_kWh', 'heat_zone3_60degC_demand_kWh'
-#         ]
-    
-# else:
-#     variable_names = [
-#         'irradiance', 'P_demand', 'P_PV', 'P_imp', 'electricity_price_imp',
-#         'P_exp', 'electricity_price_exp', 
-#         'P_ELY', 'P_ElyOn', 'ElyOn', 'P_ELY_PWA', 'mdot_H2', 'P_C', 
-#         'E_TANK', 'P_FC_in', 'P_FC', 'i_FC', 'Vdot_FC_H2',
-#         'm_cw_ELY', 'm_cw_FC', 'm_cw_HT', 'm_cw_MT', 'P_th_HT', 'P_th_MT',
-#         'heat_zone3_35degC_demand_kWh', 'heat_zone3_60degC_demand_kWh'
-#         ]
 
 results = {name: [] for name in variable_names}
 

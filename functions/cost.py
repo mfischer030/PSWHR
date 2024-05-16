@@ -149,19 +149,19 @@ def totalAnnualCost(system_sizes, energy_tariff, discountRate,
             "Grey":  {"peak_excl_vat": 11.42, "peak_incl_vat": 12.35, "off_peak_excl_vat": 8.62, "off_peak_incl_vat": 9.32},
         }
         
-        # if m.addConstr(high_usage >= 1, "BD>3500"): 
-        #     grid_usage_perkWh = {
-        #         "Leistungstarif": {"excl_vat": 15.99, "incl_vat": 17.29},
-        #         "Hochtarif":   {"excl_vat": 4.03, "incl_vat": 4.36},
-        #         "Niedertarif": {"excl_vat": 2.01, "incl_vat": 2.17},
-        #         }
+        if m.addConstr(high_usage >= 1, "BD>3500"): 
+            grid_usage_perkWh = {
+                "Leistungstarif": {"excl_vat": 15.99, "incl_vat": 17.29},
+                "Hochtarif":   {"excl_vat": 4.03, "incl_vat": 4.36},
+                "Niedertarif": {"excl_vat": 2.01, "incl_vat": 2.17},
+                }
         
-        # elif m.addConstr(high_usage < 1, "BD<3500"):
-        #     grid_usage_perkWh = { 
-        #         "Leistungstarif": {"excl_vat": 7.55, "incl_vat": 8.16},
-        #         "Hochtarif":   {"excl_vat": 7.47, "incl_vat": 8.08},
-        #         "Niedertarif": {"excl_vat": 3.74, "incl_vat": 4.04},
-        #         }
+        elif m.addConstr(high_usage < 1, "BD<3500"):
+            grid_usage_perkWh = { 
+                "Leistungstarif": {"excl_vat": 7.55, "incl_vat": 8.16},
+                "Hochtarif":   {"excl_vat": 7.47, "incl_vat": 8.08},
+                "Niedertarif": {"excl_vat": 3.74, "incl_vat": 4.04},
+                }
             
         # grid_usage_perkWh = {
         #         "Leistungstarif": {"excl_vat": 15.99, "incl_vat": 17.29},
@@ -169,11 +169,11 @@ def totalAnnualCost(system_sizes, energy_tariff, discountRate,
         #         "Niedertarif": {"excl_vat": 2.01, "incl_vat": 2.17},
         #         }
         
-        grid_usage_perkWh = {
-                "Leistungstarif": {"excl_vat": 0, "incl_vat": 0},
-                "Hochtarif":   {"excl_vat": 0, "incl_vat": 0},
-                "Niedertarif": {"excl_vat": 0, "incl_vat": 0},
-                }
+        # grid_usage_perkWh = {
+        #         "Leistungstarif": {"excl_vat": 0, "incl_vat": 0},
+        #         "Hochtarif":   {"excl_vat": 0, "incl_vat": 0},
+        #         "Niedertarif": {"excl_vat": 0, "incl_vat": 0},
+        #         }
         
         # Use these to check BIG-M constraint: high values for BD>3500 should
         # result in the optimizer choosing prices for BD<3500

@@ -228,8 +228,8 @@ def plot_component_sizes(S_PV, S_PV_max, S_ELY, S_ELY_max, S_C, S_C_max, S_FC, S
 #------------------------------------------------------------------------------
 # System operation plots
 #------------------------------------------------------------------------------
-# def plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input):  # without PWA
-def plot_HESS_results(P_PV, P_ELY, P_ELY_PWA, S_ELY, S_ELY_max, P_FC, P_FC_in, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input): #if PWA
+def plot_HESS_results(P_PV, P_ELY, S_ELY, S_ELY_max, P_FC, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input):  # without PWA
+# def plot_HESS_results(P_PV, P_ELY, P_ELY_PWA, S_ELY, S_ELY_max, P_FC, P_FC_in, S_FC, S_FC_max, E_TANK, S_TANK, S_TANK_max, df_input): #if PWA
     """
     Plot main results including the size and operation of the electrolyzer (ELY),
     fuel cell (FC), and energy and TANK size over time.
@@ -274,14 +274,15 @@ def plot_HESS_results(P_PV, P_ELY, P_ELY_PWA, S_ELY, S_ELY_max, P_FC, P_FC_in, S
     ax2.legend(loc='upper right', fontsize=24)
 
     # Plot 3: Energy and TANK Size
-    ax3.plot(range(len(df_input)), [E_TANK[t] / 3600000 for t in range(len(df_input))], label='TANK', color=palette[5])
+    ax3.fill_between(range(len(df_input)), 0, [E_TANK[t] / 3600000 for t in range(len(df_input))], label='TANK', color=palette[5])
+    # ax3.plot(range(len(df_input)), [E_TANK[t] / 3600000 for t in range(len(df_input))], label='TANK', color=palette[5])
     ax3.plot(range(len(df_input)), [S_TANK / 3600000] * len(df_input), 
              label=f'H2-TANK size: {S_TANK/ (39.39*3600000):.2f} kgH2', linestyle='-.', color=palette[6])  
     ax3.set_xlabel('Time [h]', fontsize=24)
     ax3.set_ylabel('Energy [kWh]', fontsize=24)
     # ax3.set_ylim([0, (S_TANK_max * 1.1) / 3600000])
     # ax3.set_ylim([0, S_TANK / 3600000 * 1.1])
-    ax3.set_ylim([0, 53000])
+    ax3.set_ylim([0, 35000])
     ax3.tick_params(axis='both', which='major', labelsize=24)
     ax3.legend(loc='upper right', fontsize=24)
 
