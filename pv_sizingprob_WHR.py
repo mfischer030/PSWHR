@@ -28,7 +28,7 @@ The objective of this optimization is to minimze the cost function:
 #------------------------------------------------------------------------------
 # Choose user or adapt paths in config.py module
 #------------------------------------------------------------------------------
-user = 'maxime'    # 'christian', 'gabriele', 'maxime', 'maxime_EMPA_WS'
+user = 'christian'    # 'christian', 'gabriele', 'maxime', 'maxime_EMPA_WS'
 
 from config import paths_configuration
 input_path, demand_path, heat_path, function_path, export_path = paths_configuration(user)
@@ -59,11 +59,11 @@ discountRate = 0.07                                             # [-] Annual Dis
 N_bp = 3
 
 # Define wether you want to consider current (1), midterm (2) or future (3) efficiencies and Unit prices for components
-efficiency_level = 1
-UP_level         = 1
+efficiency_level = 3
+UP_level         = 3
 
 # Maximal PV Area 
-landuseCoefPV = 0.8                  # Determines how much of the disposal land can actually be used for PV power generation
+landuseCoefPV = 0.0                 # Determines how much of the disposal land can actually be used for PV power generation
 Area_PV_max   = landuseCoefPV * 5000 # Maximum PV area [m2] 
 
 # Import functions and modules ------------------------------------------------
@@ -179,8 +179,8 @@ if efficiency_level == 1:
 elif efficiency_level == 2:
     eta = {'PV': 0.21,'ELY': 0.7,'C': 0.8,'TANK': 0.975,'FC': 0.6}                                        # Midterm
 elif efficiency_level == 3: 
-    eta = {'PV': 0.21,'ELY': 0.8,'C': 0.9,'TANK': 0.99,'FC': 0.7}  
-    # eta = {'PV': 0.21,'ELY': 1,'C': 1,'TANK': 1,'FC': 1}                                                # Future      
+    eta = {'PV': 0.21,'ELY': 0.8,'C': 0.9,'TANK': 0.9999,'FC': 0.7}
+    eta = {'PV': 0.0, 'ELY': 0.98, 'C': 1.0, 'TANK': 1.0, 'FC': 1.0}                                   # Future
 
 #------------------------------------------------------------------------------
 # Unit prices of components / capital costs in [€/W] 
@@ -202,7 +202,7 @@ elif UP_level == 2:
     UP = {'PV': 0.8,'BAT': 0.5/3600,'ELY': 1,'C': 14.74,'TANK': 8.25/(3.6*10**6), 'FC': 1.473145,'HP': 0.238, 'HEX': 221}              # Mid-Term
 elif UP_level == 3: 
     UP = {'PV': 0.8,'BAT': 0.5/3600,'ELY': 0.556,'C': 9.82, 'TANK': 7.34/(3.6*10**6),'FC': 1.10486,'HP': 0.200, 'HEX': 100}            # Ultimate
-    # UP  =  {'PV': 0.8,'BAT': 0,'ELY': 0,'C': 0, 'TANK': 0,'FC': 0,'HP': 0, 'HEX': 0}
+    UP  =  {'PV': 0.8,'BAT': 0,'ELY': 0.0,'C': 0, 'TANK': 0,'FC': 0.0,'HP': 0, 'HEX': 0}
 
 
 
@@ -251,7 +251,7 @@ bat_params = {
 #------------------------------------------------------------------------------
 
 # Electrolyser max and min nominal power (W)   
-S_ELY_max = 1000*1000    # Maximal Electrolyzer size in [W]
+S_ELY_max = (5)*1000*1000    # Maximal Electrolyzer size in [W]
 S_ELY_min = 0           # Min. size ELY where problem is feasible [W] - from Rox
 
 # Calculating the spezific work of the compresso, from Minutillo et al. 2021
@@ -262,12 +262,12 @@ p_in    = 30                                                                   #
 L_is_C  = (k/(k-1)) * R_H2 * T_in_H2 * (((p_out/p_in)**((k-1)/k)) - 1)         # Specific work compressor [J/kg] 
 
 # Maximal TANK energy capacity (J) => 14 days storage capacity
-S_TANK_max    = E_demand_day * 14 * 3600                  # E_demand_day in [Wh]  
+S_TANK_max    = (1e6)*E_demand_day * 14 * 3600                  # E_demand_day in [Wh]
 S_TANK_H2_max = S_TANK_max / HHV                          # equivalent in kg_H2
 
 # Maximal FC size as the maximal power demand divided by eff in [W]
 #S_FC_max = P_peak_max / eta["FC"]
-S_FC_max = 1000*1000  
+S_FC_max = (5)*1000*1000
 """
 Range PEMFC = [10W;1MW] from 2021_cigolotti Comprehensive Review on Fuel Cell 
 Technology for Stationary Applications
@@ -307,8 +307,8 @@ COP        = 0.5 * COP_carnot                          # Real COP, as in Tiktak
 scenario_choice = input("Enter 'grid' for grid-connected scenario or 'off-grid' for an off-grid scenario: ").lower()
 # Check the user's choice and set relevant parameters accordingly
 if scenario_choice == 'grid':
-    P_imp_ub = 1000000                 # Upper bound for P_imp in grid-connected scenario, Trafo limit is 1MW
-    P_exp_ub = 1000000                  # Upper bound for P_exp in grid-connected scenario, Trafo limit is 1MW
+    P_imp_ub = (10)*1000000                 # Upper bound for P_imp in grid-connected scenario, Trafo limit is 1MW
+    P_exp_ub = (0)*1000000                  # Upper bound for P_exp in grid-connected scenario, Trafo limit is 1MW
 elif scenario_choice == 'off-grid':
     P_imp_ub = 0                       # No imported power in off-grid scenario
     P_exp_ub = 0                       # No exported power in off-grid scenario
@@ -329,7 +329,7 @@ m = Model()
 # Sizing Variables
 Area_PV  = m.addVar(lb=0,         ub=Area_PV_max, name='Area_PV')              # Maximum PV Area in [m2]
 S_ELY    = m.addVar(lb=S_ELY_min, ub=S_ELY_max,   name='S_ELY')                # Size of the Electrolyzer in [W]
-S_C      = m.addVar(lb=0,         ub=100000,      name='S_C')                  # Size of the Compressor in [W]
+S_C      = m.addVar(lb=0,         ub=(100)*100000,      name='S_C')                  # Size of the Compressor in [W]
 S_TANK   = m.addVar(lb=0,         ub=S_TANK_max,  name='S_TANK')               # Size of the Hydrogen Storage Tank in [J]
 S_FC     = m.addVar(lb=0,         ub=S_FC_max,    name='S_FC')                 # Size of the Fuel CEll in [W]
 S_HP     = m.addVar(lb=0, ub=P_th_max, name="S_HP")                            # Size of the Heat Pump in [W]
@@ -443,6 +443,9 @@ m.addConstr(P_FC[0] <= E_TANK[0] / deltat, name= "InitialFC")
 
 # constraint for H2 storage equal at final and last time step (periodicity)
 m.addConstr(E_TANK[0] == E_TANK[nHours-1], name='Periodicity_HESS') # 08.02: added name to cosntraint
+
+m.addConstr(E_TANK[0] == (10*36)*1e9, name='Enough_InitialEnergy_Tank') # 08.02: added name to cosntraint
+
 
 # Overall energy balance: left => consumers | right => generators
 if include_battery:
